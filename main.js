@@ -1448,7 +1448,7 @@ class Simulation {
     ctx.save();
     ctx.fillStyle = '#a8b0c0';
     ctx.font = '12px ui-sans-serif, system-ui, -apple-system';
-    ctx.fillText('Caster', this.caster.x + 12, this.caster.y + 4);
+    ctx.fillText('Player', this.caster.x + 12, this.caster.y + 4);
     ctx.fillText('Boss', this.boss.x + 24, this.boss.y + 4);
     ctx.restore();
 
