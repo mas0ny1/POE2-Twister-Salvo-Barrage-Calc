@@ -9,7 +9,7 @@ A lot of the modifications were assisted by AI, implementation/design decisions 
 
 Current assumptions for Twister behavior: https://poe2db.tw/Twister
 ------------------------------------------
-- 10 Units is equivalent to 10 Meters. (Confirmed by Zao on PoB Community Developer Discord)
+- 10 Units is equivalent to 10 Meters. (Confirmed by Zao (GGG Dev) on PoB Community Developer Discord)
 - Twister base speed is 75 units per second (from POE2DB)
 - Twisters are shot in random directions because we are using "Salvo Support" (https://poe2db.tw/Salvo), This means they have a "cone" or "angle" of 360 degrees
 - Boss radius is 3 units (This is the unit of measurement for Maven from Path of Exile 1 and was left as default)
