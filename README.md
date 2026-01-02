@@ -1,17 +1,17 @@
-Spark Simulator (Path of Exile – Spark DPS Sandbox)
-===================================================
+Twister Simulator (Path of Exile – Twister DPS Sandbox)
+==========================================================
 
-Web app to visualize and approximate Path of Exile's Spark projectile behavior and DPS. Runs entirely in the browser using a single HTML page, CSS, and vanilla JavaScript.
+Web app to visualize and approximate Path of Exile's Twister projectile behavior and DPS. Runs entirely in the browser using a single HTML page, CSS, and vanilla JavaScript.
 
 
-Current assumptions I couldn't find definitive answers to:
------------
-- Spark moves 80 unit/s at base. (This is based on visual measurements from in game)
-- Spark cone angle is 90 degrees. 
-- Maven/Most bosses are 3 units.
-- Maven arena is 160 units.
-- Sparks are 1.5 units.
-- Spark jitter left/right while in flight. I tried to extract coordinates by masking and tracking a video, likely not super accurate but looks similar to in game. 
+Current assumptions for Twister behavior
+------------------------------------------
+- Twister base speed is 75 units per second
+- Twisters are shot in random directions, full 360 degrees (no cone options)
+- Boss/Maven radius is 3 units
+- Maven arena is 160 units in radius
+- Twisters are 0.5 units in radius
+- Twisters travel in straight lines with no jitter or heading changes 
 
 Quick start
 -----------
@@ -34,7 +34,7 @@ Repository layout
   - World-units model with dynamic pixel scaling
   - Arenas: Circle, Square, and corrected hollow T‑Junction
   - Entities: caster (draggable), boss/enemy (draggable)
-  - Event‑driven “wander” steering to mimic Spark’s observed wiggle
+  - Straight-line projectile movement (no steering or wander)
   - Projectile lifecycle, continuous collision detection against the boss, and terrain reflection
   - Enemy‑only behaviors with correct priority and single-operation per hit
   - Metrics capture and sparkline charts with configurable time window
@@ -50,10 +50,13 @@ Controls (side panel)
 - Skill & Projectiles
   - Average Hit (damage per successful hit)
   - Projectile Speed (units/s), Duration (s)
-  - Projectiles per Cast, Cast Speed (casts/s)
+  - Base Projectiles (base count per cast)
+  - Cast Speed (casts/s) — affects seal accumulation rate
+  - Max Seals (Salvo) — maximum number of seals that can be accumulated
+  - Seal Gain Frequency (/s) — how fast seals accumulate (default 0.5 = 1 seal per 2 seconds)
+  - Current Seals display shows accumulated seals
 - Casting
-  - Cast Shape: Circular or Cone
-  - Caster Facing (degrees) and Cone Angle (0–360°). Initial spawn angles only
+  - Projectiles fire in random directions (full 360°)
 - Behaviors (enemy collisions only; one operation per hit)
   - Pierce Count
   - Max Forks
@@ -71,8 +74,12 @@ Controls (side panel)
 Mechanics modeled
 -----------------
 
-- Spark projectiles wander with an event‑driven heading change model (micro jitter + ~3 Hz direction events with small/large turns and occasional bursts)
-- Per‑cast per‑target hit cooldown: 0.66 s. Other projectiles from the same cast pass through during the cooldown
+- Salvo gem mechanic: Twisters accumulate seals over time (default 1 seal per 2 seconds) up to a maximum (default 3)
+  - When max seals are accumulated, the skill fires all projectiles at once
+  - Fire count = base projectiles + (2 × number of seals consumed)
+  - All seals are consumed when firing
+- Twisters move in straight lines with no steering or jitter
+- Per-cast per-target hit cooldown: 0.66 s. Other projectiles from the same cast pass through during the cooldown
 - Behaviors on enemy hit (one per hit; priority): Split → Pierce → Fork → Chain
 - Projectiles bounce off walls/arena boundaries and ignore the caster
 - Duration ends a projectile. Leash mechanic is disabled by design

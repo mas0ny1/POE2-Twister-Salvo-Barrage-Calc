@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Path of Exile - Spark Simulator</title>
+    <title>Twister Simulator</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <div id="app">
       <aside id="controls">
-        <h2>Spark Simulator</h2>
+        <h2>Twister Simulator</h2>
         <section class="card">
           <h3>Simulation</h3>
           <div class="field-group">
@@ -28,75 +28,66 @@
         </section>
 
         <section class="card">
-          <h3>Skill & Projectiles</h3>
+          <h3>Skill Behaviour</h3>
+          <div class="field-group">
+            <label for="projectileCount">Base Projectiles</label>
+            <input id="projectileCount" type="number" value="4" min="1" step="1" />
+          </div>
+
+          <div class="field-group">
+            <label for="baseProjSpeed">Base Projectile Speed (u/s)</label>
+            <input id="baseProjSpeed" type="number" value="75" min="1" step="1" />
+          </div>
+
+          <div class="field-group">
+            <label for="twisterRadius">Twister Radius (units)</label>
+            <input id="twisterRadius" type="number" value="0.5" min="0.1" step="0.1" />
+          </div>
+
+          <div class="field-group">
+            <label for="duration">Duration (s)</label>
+            <input id="duration" type="number" value="3" min="0" step="0.1" />
+          </div>
+
+          <div class="field-group">
+            <label for="baseSealGainFrequency">Base Seal Gain Frequency (/s)</label>
+            <input id="baseSealGainFrequency" type="number" value="0.5" min="0.01" step="0.01" />
+          </div>
+        </section>
+
+        <section class="card">
+          <h3>Character Stats</h3>
           <div class="field-group">
             <label for="avgHit">Average Hit</label>
             <input id="avgHit" type="number" value="1000" min="0" step="1" />
           </div>
 
-          <div class="field-group two-col">
-            <div>
-              <label for="projSpeedMod">Projectile Speed Mod</label>
-              <input id="projSpeedMod" type="number" value="1.0" min="0" step="0.01" />
-            </div>
-            <div>
-              <label for="duration">Duration (s)</label>
-              <input id="duration" type="number" value="2" min="0" step="0.1" />
-            </div>
-          </div>
-
-          <div class="field-group two-col">
-            <div>
-              <label for="projectileCount">Projectiles per Cast</label>
-              <input id="projectileCount" type="number" value="8" min="1" step="1" />
-            </div>
-            <div>
-              <label for="castSpeed">Cast Speed (casts/s)</label>
-              <input id="castSpeed" type="number" value="3" min="0" step="0.1" />
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <h3>Casting</h3>
           <div class="field-group">
-            <label for="castShape">Cast Shape</label>
-            <select id="castShape">
-              <option value="circular">Circular</option>
-              <option value="cone">Cone</option>
-            </select>
+            <label for="projSpeedMod">Increased Projectile Speed (%)</label>
+            <input id="projSpeedMod" type="number" value="0" min="0" step="1" />
           </div>
-          <div class="field-group" id="coneOptions">
-            <label for="casterFacingDeg">Caster Facing (degrees)</label>
-            <input id="casterFacingDeg" type="range" value="0" min="-180" max="180" step="1" />
+
+          <div class="field-group">
+            <label for="increasedSealGainFrequency">Increased Seal Gain Frequency (%)</label>
+            <input id="increasedSealGainFrequency" type="number" value="0" min="0" step="1" />
+          </div>
+
+          <div class="field-group">
+            <label for="maxSeals">Max Seals</label>
+            <input id="maxSeals" type="number" value="3" min="1" step="1" />
+          </div>
+
+          <div class="field-group">
+            <label>Current Seals</label>
+            <div id="currentSealsDisplay" style="font-size: 1.2em; font-weight: bold; color: #7cc5ff;">0 / 3</div>
           </div>
         </section>
 
         <section class="card">
-          <h3>Behaviors</h3>
-          <div class="field-group three-col">
-            <div>
-              <label for="pierceCount">Pierce Count</label>
-              <input id="pierceCount" type="number" value="0" min="0" step="1" />
-            </div>
-            <div>
-              <label for="forkTimes">Fork count</label>
-              <input id="forkTimes" type="number" value="0" min="0" step="1" />
-            </div>
-            <div>
-              <label for="chainCount">Chain Count</label>
-              <input id="chainCount" type="number" value="0" min="0" step="1" />
-            </div>
-          </div>
-          <div class="field-group two-col">
-            <div>
-              <label for="splitCount">Split: projectile count</label>
-              <input id="splitCount" type="number" value="0" min="0" step="1" />
-            </div>
-            <div>
-              <label for="forkChance">Fork: % add. projectile</label>
-              <input id="forkChance" type="number" value="0" min="0" max="100" step="1" />
-            </div>
+          <h3>Character Behaviour</h3>
+          <div class="field-group">
+            <label for="salvoSealCount">How many seals do you wait for</label>
+            <input id="salvoSealCount" type="number" value="3" min="0" step="1" />
           </div>
         </section>
 
@@ -125,12 +116,12 @@
             </select>
           </div>
           <div class="stats">
-            <div class="stat"><span>Hits (total):</span><strong id="hitsTotal">0</strong><canvas id="sparkHits" class="spark" width="160" height="28"></canvas></div>
-            <div class="stat"><span>Hit Rate (/s):</span><strong id="hitsPerSec">0</strong><canvas id="sparkRate" class="spark" width="160" height="28"></canvas></div>
-            <div class="stat"><span>DPS:</span><strong id="dps">0</strong><canvas id="sparkDps" class="spark" width="160" height="28"></canvas></div>
-            <div class="stat"><span>Total Damage:</span><strong id="totalDmg">0</strong><canvas id="sparkDmg" class="spark" width="160" height="28"></canvas></div>
-            <div class="stat"><span>Projectiles:</span><strong id="projAlive">0</strong><canvas id="sparkAlive" class="spark" width="160" height="28"></canvas></div>
-            <div class="stat"><span>Casts on CD:</span><strong id="cooldownPct">0%</strong><canvas id="sparkCooldown" class="spark" width="160" height="28"></canvas></div>
+            <div class="stat"><span>Hits (total):</span><strong id="hitsTotal">0</strong><canvas id="sparkHits" class="twister" width="160" height="28"></canvas></div>
+            <div class="stat"><span>Hit Rate (/s):</span><strong id="hitsPerSec">0</strong><canvas id="sparkRate" class="twister" width="160" height="28"></canvas></div>
+            <div class="stat"><span>DPS:</span><strong id="dps">0</strong><canvas id="sparkDps" class="twister" width="160" height="28"></canvas></div>
+            <div class="stat"><span>Total Damage:</span><strong id="totalDmg">0</strong><canvas id="sparkDmg" class="twister" width="160" height="28"></canvas></div>
+            <div class="stat"><span>Projectiles:</span><strong id="projAlive">0</strong><canvas id="sparkAlive" class="twister" width="160" height="28"></canvas></div>
+            <div class="stat"><span>Casts on CD:</span><strong id="cooldownPct">0%</strong><canvas id="sparkCooldown" class="twister" width="160" height="28"></canvas></div>
           </div>
         </section>
 

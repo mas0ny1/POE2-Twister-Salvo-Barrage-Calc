@@ -1,4 +1,4 @@
-/* Spark simulator (client-only, Canvas 2D). Physics runs in world units scaled to pixels. */
+/* Twister simulator (client-only, Canvas 2D). Physics runs in world units scaled to pixels. */
 
 /* Utility */
 const TWO_PI = Math.PI * 2;
@@ -47,7 +47,6 @@ function buildURLState(sim) {
     pc: sim.config.projectileCount,
     cs: sim.config.castSpeed,
     shape: sim.config.castShape,
-    face: sim.config.casterFacingDeg,
     pr: sim.config.pierceCount,
     fk: sim.config.forkTimes,
     fc: sim.config.forkChance,
@@ -118,7 +117,6 @@ function parseURLParams() {
     pc: num('pc'), // projectileCount
     cs: num('cs'), // castSpeed
     shape: str('shape'), // castShape (short code)
-    face: num('face'), // casterFacingDeg
     pr: num('pr'), // pierceCount
     fk: num('fk'), // forkTimes
     fc: num('fc'), // forkChance
@@ -136,23 +134,28 @@ function parseURLParams() {
 }
 
 function applyParamsToDOM(params) {
-  const setIf = (id, v) => { if (v !== undefined && !Number.isNaN(v)) el(id).value = String(v); };
-  const setSelIf = (id, v) => { if (v !== undefined) el(id).value = v; };
+  const setIf = (id, v) => { 
+    const elem = el(id);
+    if (elem && v !== undefined && !Number.isNaN(v)) elem.value = String(v); 
+  };
+  const setSelIf = (id, v) => { 
+    const elem = el(id);
+    if (elem && v !== undefined) elem.value = v; 
+  };
   setSelIf('arenaType', decodeArena(params.a));
   setIf('avgHit', params.ah);
   setIf('projSpeedMod', params.ps);
   setIf('duration', params.d);
   setIf('projectileCount', params.pc);
-  setIf('castSpeed', params.cs);
-  setSelIf('castShape', decodeShape(params.shape));
-  setIf('casterFacingDeg', params.face);
-  setIf('pierceCount', params.pr);
-  setIf('forkTimes', params.fk);
-  setIf('forkChance', params.fc);
-  setIf('chainCount', params.ch);
-  setIf('splitCount', params.sp);
+  setIf('baseProjSpeed', params.baseProjSpeed);
+  setIf('baseSealGainFrequency', params.baseSealGainFrequency);
+  setIf('maxSeals', params.maxSeals);
+  setIf('salvoSealCount', params.salvoSealCount);
+  setIf('twisterRadius', params.twisterRadius);
+  setIf('increasedSealGainFrequency', params.increasedSealGainFrequency);
   setIf('bossRadius', params.er);
-  if (params.ts !== undefined && !Number.isNaN(params.ts)) el('timeScale').value = String(params.ts);
+  const timeScaleElem = el('timeScale');
+  if (timeScaleElem && params.ts !== undefined && !Number.isNaN(params.ts)) timeScaleElem.value = String(params.ts);
   return {
     casterWorld: (params.cxu !== undefined && params.cyu !== undefined) ? { x: params.cxu, y: params.cyu } : undefined,
     bossWorld: (params.bxu !== undefined && params.byu !== undefined) ? { x: params.bxu, y: params.byu } : undefined,
@@ -366,15 +369,14 @@ const PER_CAST_TARGET_COOLDOWN = 0.66;
 const ARENA_RADIUS_UNITS = 160; // circle arena radius in world units
 const BOSS_RADIUS_UNITS = 3;
 const CASTER_RADIUS_UNITS = 3;
-const PROJ_RADIUS_UNITS = 1.5;
-const BASE_PROJ_SPEED_UNITS = 80;
-const WANDER_INTENSITY = 0.66;
+const PROJ_RADIUS_UNITS = 0.5;
+const BASE_PROJ_SPEED_UNITS = 75;
+const WANDER_INTENSITY = 0.0;
 
 /**
- * Event-driven wander to mimic Spark-like motion:
- * - Continuous micro-jitter (Gaussian) for subtle wiggle
- * - Poisson-distributed heading-change events (~3 Hz)
- * - Mixture of small and larger heading deltas; occasional short bursts (2–3 rapid events)
+ * Straight-line movement for Twisters:
+ * - Twisters travel in a single direction with no jitter or heading changes
+ * - No wander behavior needed
  */
 function gaussian() {
   // Box-Muller transform
@@ -633,7 +635,9 @@ class Projectile {
     this.vy = Math.sin(config.angle) * config.speed;
     this.speed = config.speed;
     this.angle = config.angle;
-    this.radius = PROJ_RADIUS_UNITS * window.__currentScale;
+    // Store the twister radius in world units and scale to pixels
+    this.twisterRadiusUnits = config.twisterRadius || PROJ_RADIUS_UNITS;
+    this.radius = this.twisterRadiusUnits * window.__currentScale;
     this.spawnTime = config.now;
     this.duration = config.duration;
     this.casterRef = config.casterRef; // live reference to caster entity (for 150u leash)
@@ -643,6 +647,8 @@ class Projectile {
     this.chainRemaining = config.chainCount;
     this.splitCount = config.splitCount; // number of new projectiles when split triggers
     this.hasSplit = false;
+    // Salvo grouping: base projectiles (0), then seal groups (1, 2, 3, ...)
+    this.salvoGroup = config.salvoGroup || 0;
   }
   age(now) { return (now - this.spawnTime) / 1000; }
   isExpired(now) {
@@ -650,12 +656,8 @@ class Projectile {
     return false;
   }
   think(dt) {
-    // Update direction via wander
-    this.angle = this.wander.step(this.angle, dt);
-    const vnx = Math.cos(this.angle);
-    const vny = Math.sin(this.angle);
-    this.vx = vnx * this.speed;
-    this.vy = vny * this.speed;
+    // Twisters move in straight lines; no direction changes
+    // Velocity remains constant from spawn
   }
   move(dt) { this.x += this.vx * dt; this.y += this.vy * dt; }
   reflect(nx, ny) {
@@ -678,58 +680,61 @@ class Projectile {
 /** Simulation */
 class Simulation {
   constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.width = canvas.width;
-    this.height = canvas.height;
-    this.scale = this.computeScale(); // pixels per world unit
-    this.lastTime = performance.now();
-    this.accum = 0;
-    this.fixedDt = 1 / 120; // high fidelity physics
-    this.maxTerrainStepPx = 2.0; // CCD safety step for terrain (pixels)
+    try {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.width = canvas.width;
+      this.height = canvas.height;
+      this.scale = this.computeScale(); // pixels per world unit
+      this.lastTime = performance.now();
+      this.accum = 0;
+      this.fixedDt = 1 / 120; // high fidelity physics
+      this.maxTerrainStepPx = 2.0; // CCD safety step for terrain (pixels)
 
-    // Entities (positions in pixels, radii scaled from world units)
-    const cx = this.width / 2; const cy = this.height / 2;
-    this.caster = new Entity(cx - 40 * this.scale, cy + 30 * this.scale, CASTER_RADIUS_UNITS * this.scale, '#4aa3ff');
-    this.boss = new Entity(cx + 30 * this.scale, cy - 30 * this.scale, BOSS_RADIUS_UNITS * this.scale, '#ff6b6b');
-    this.casterLeash = true;
+      // Entities (positions in pixels, radii scaled from world units)
+      const cx = this.width / 2; const cy = this.height / 2;
+      this.caster = new Entity(cx - 40 * this.scale, cy + 30 * this.scale, CASTER_RADIUS_UNITS * this.scale, '#4aa3ff');
+      this.boss = new Entity(cx + 30 * this.scale, cy - 30 * this.scale, BOSS_RADIUS_UNITS * this.scale, '#ff6b6b');
+      this.casterLeash = true;
 
-    // State
-    this.projectiles = [];
-    this.running = false;
-    this.castAccumulator = 0;
-    this.castCooldown = 0; // computed from cast speed
-    // Load from URL params first
-    const __params = parseURLParams();
-    const __pos = applyParamsToDOM(__params);
-    this.config = this.readConfigFromDOM();
-    this.arena = this.createArena(this.config.arenaType);
-    // Metrics history for spark charts
-    this.metrics = {
-      windowSec: 10,
-      samples: [], // {t, hitsTotal, hitsPerSec, dps, totalDamage, projAlive, cooldownPct}
-      lastSampleAt: performance.now(),
-      sampleIntervalMs: 200,
-    };
-    // Apply initial enemy radius from config
-    this.boss.r = clamp(this.config.bossRadius || BOSS_RADIUS_UNITS, 0.1, 999) * this.scale;
+      // State
+      this.projectiles = [];
+      this.running = false;
+      this.castAccumulator = 0;
+      this.castCooldown = 0; // computed from cast speed
+      this.currentSeals = 0; // Salvo seal tracking
+      this.lastSealAccumTime = 0; // for seal gain timing
+      // Load from URL params first
+      const __params = parseURLParams();
+      const __pos = applyParamsToDOM(__params);
+      this.config = this.readConfigFromDOM();
+      this.arena = this.createArena(this.config.arenaType);
+      // Metrics history for twister charts
+      this.metrics = {
+        windowSec: 10,
+        samples: [], // {t, hitsTotal, hitsPerSec, dps, totalDamage, projAlive, cooldownPct}
+        lastSampleAt: performance.now(),
+        sampleIntervalMs: 200,
+      };
+      // Apply initial enemy radius from config
+      this.boss.r = clamp(this.config.bossRadius || BOSS_RADIUS_UNITS, 0.1, 999) * this.scale;
 
-    // Apply positions from URL
-    if (__pos.casterWorld) {
-      const p = fromWorldNorm(this, __pos.casterWorld.x, __pos.casterWorld.y);
-      this.caster.x = p.x; this.caster.y = p.y;
-    } else if (__pos.caster) {
-      this.caster.x = __pos.caster.x * this.width; this.caster.y = __pos.caster.y * this.height;
-    }
-    if (__pos.bossWorld) {
-      const p = fromWorldNorm(this, __pos.bossWorld.x, __pos.bossWorld.y);
-      this.boss.x = p.x; this.boss.y = p.y;
-    } else if (__pos.boss) {
-      this.boss.x = __pos.boss.x * this.width; this.boss.y = __pos.boss.y * this.height;
-    }
+      // Apply positions from URL
+      if (__pos.casterWorld) {
+        const p = fromWorldNorm(this, __pos.casterWorld.x, __pos.casterWorld.y);
+        this.caster.x = p.x; this.caster.y = p.y;
+      } else if (__pos.caster) {
+        this.caster.x = __pos.caster.x * this.width; this.caster.y = __pos.caster.y * this.height;
+      }
+      if (__pos.bossWorld) {
+        const p = fromWorldNorm(this, __pos.bossWorld.x, __pos.bossWorld.y);
+        this.boss.x = p.x; this.boss.y = p.y;
+      } else if (__pos.boss) {
+        this.boss.x = __pos.boss.x * this.width; this.boss.y = __pos.boss.y * this.height;
+      }
 
-    // Ensure we always populate world-normalized positions in URL for sharing (prefer world coords only)
-    updateURL(this);
+      // Ensure we always populate world-normalized positions in URL for sharing (prefer world coords only)
+      updateURL(this);
 
     // Hit tracking
     this.hitsTotal = 0;
@@ -744,7 +749,16 @@ class Simulation {
     // UI
     this.installUI();
 
-    requestAnimationFrame((t) => this.loop(t));
+      requestAnimationFrame((t) => this.loop(t));
+    } catch (err) {
+      console.error('Simulation constructor error:', err);
+      // At minimum, ensure we have a valid canvas context to draw error message
+      if (this.ctx) {
+        this.ctx.fillStyle = '#ff6666';
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText('Error initializing simulation. Check console.', 20, 40);
+      }
+    }
   }
 
   // Enemy behavior helpers (separate for clarity and testability)
@@ -765,6 +779,8 @@ class Simulation {
         forkTimes: proj.forkRemaining,
         chainCount: proj.chainRemaining,
         splitCount: 0,
+        twisterRadius: this.config.twisterRadius,
+        salvoGroup: proj.salvoGroup,
       }));
     }
     return 'remove';
@@ -796,6 +812,8 @@ class Simulation {
         forkTimes: proj.forkRemaining - 1,
         chainCount: proj.chainRemaining,
         splitCount: 0,
+        twisterRadius: this.config.twisterRadius,
+        salvoGroup: proj.salvoGroup,
       }));
     }
     return 'remove';
@@ -819,26 +837,32 @@ class Simulation {
   }
 
   readConfigFromDOM() {
-    const getNum = (id) => Number(el(id).value);
-    const getSel = (id) => el(id).value;
-    const castSpeed = getNum('castSpeed');
+    const getNum = (id) => {
+      const elem = el(id);
+      return elem ? Number(elem.value) : 0;
+    };
+    const getSel = (id) => {
+      const elem = el(id);
+      return elem ? elem.value : 'circle';
+    };
     return {
       arenaType: getSel('arenaType'),
       avgHit: getNum('avgHit'),
-      projSpeedMod: Number(el('projSpeedMod').value),
+      increasedProjSpeed: getNum('projSpeedMod') || 0, // percentage increase
       projectileCount: getNum('projectileCount'),
-      castSpeed,
-      castInterval: castSpeed > 0 ? 1 / castSpeed : Infinity,
+      twisterRadius: getNum('twisterRadius'),
       duration: getNum('duration'),
-      castShape: getSel('castShape'),
-      casterFacingDeg: Number(el('casterFacingDeg').value),
-      coneAngleDeg: 90,
-      pierceCount: getNum('pierceCount'),
-      forkTimes: getNum('forkTimes'),
-      chainCount: getNum('chainCount'),
-      splitCount: getNum('splitCount'),
-      forkChance: clamp(Number(el('forkChance')?.value || 0), 0, 100),
-      bossRadius: Number(el('bossRadius')?.value || BOSS_RADIUS_UNITS),
+      pierceCount: 999, // Twisters always pierce
+      forkTimes: 0,
+      chainCount: 0,
+      splitCount: 0,
+      forkChance: 0,
+      bossRadius: getNum('bossRadius') || BOSS_RADIUS_UNITS,
+      maxSeals: getNum('maxSeals'),
+      salvoSealCount: getNum('salvoSealCount'),
+      baseSealGainFrequency: getNum('baseSealGainFrequency'),
+      baseProjSpeed: getNum('baseProjSpeed'),
+      increasedSealGainFrequency: getNum('increasedSealGainFrequency') || 0,
     };
   }
 
@@ -850,40 +874,51 @@ class Simulation {
 
   installUI() {
     const ids = [
-      'arenaType','avgHit','projSpeedMod','projectileCount','castSpeed','duration','castShape','casterFacingDeg','pierceCount','forkTimes','chainCount','splitCount','forkChance','bossRadius'
+      'arenaType','avgHit','projSpeedMod','projectileCount','twisterRadius','duration','bossRadius','maxSeals','salvoSealCount','baseSealGainFrequency','baseProjSpeed','increasedSealGainFrequency'
     ];
     for (const id of ids) {
-      document.getElementById(id).addEventListener('input', () => {
-        this.config = this.readConfigFromDOM();
-        this.arena = this.createArena(this.config.arenaType);
-        document.getElementById('coneOptions').style.display = this.config.castShape === 'cone' ? 'block' : 'none';
-        // live-apply enemy radius
-        this.boss.r = clamp(this.config.bossRadius, 0.1, 999) * this.scale;
+      const elem = document.getElementById(id);
+      if (elem) {
+        elem.addEventListener('input', () => {
+          this.config = this.readConfigFromDOM();
+          this.arena = this.createArena(this.config.arenaType);
+          // live-apply enemy radius
+          this.boss.r = clamp(this.config.bossRadius, 0.1, 999) * this.scale;
 
-        // write URL params on any config change
+          // write URL params on any config change
+          updateURL(this);
+        });
+      }
+    }
+
+    const timeScaleElem = document.getElementById('timeScale');
+    if (timeScaleElem) {
+      timeScaleElem.addEventListener('change', (e) => {
+        const sec = Number(e.target.value);
+        this.metrics.windowSec = clamp(sec, 1, 600);
         updateURL(this);
       });
     }
 
-    // Ensure facing updates URL immediately on drag in all browsers
-    const facingEl = document.getElementById('casterFacingDeg');
-    if (facingEl) {
-      const onFace = () => { this.config.casterFacingDeg = Number(facingEl.value); updateURL(this); };
-      facingEl.addEventListener('input', onFace);
-      facingEl.addEventListener('change', onFace);
+    const startBtn = document.getElementById('startBtn');
+    if (startBtn) {
+      startBtn.addEventListener('click', () => { 
+        this.running = true;
+        // Set to max seals and emit immediately
+        this.currentSeals = this.config.maxSeals;
+        this.emitCast(performance.now());
+      });
     }
-
-    document.getElementById('timeScale').addEventListener('change', (e) => {
-      const sec = Number(e.target.value);
-      this.metrics.windowSec = clamp(sec, 1, 600);
-      updateURL(this);
-    });
-
-    document.getElementById('startBtn').addEventListener('click', () => { this.running = true; });
-    document.getElementById('stopBtn').addEventListener('click', () => { this.running = false; });
-    document.getElementById('resetBtn').addEventListener('click', () => { this.reset(); });
-
-    document.getElementById('coneOptions').style.display = this.config.castShape === 'cone' ? 'block' : 'none';
+    
+    const stopBtn = document.getElementById('stopBtn');
+    if (stopBtn) {
+      stopBtn.addEventListener('click', () => { this.running = false; });
+    }
+    
+    const resetBtn = document.getElementById('resetBtn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => { this.reset(); });
+    }
   }
 
   installInput() {
@@ -914,29 +949,33 @@ class Simulation {
     this.totalDamage = 0;
     this.hitTimestamps = [];
     this.castTargetLocks.clear();
+    this.currentSeals = 0;
+    this.lastSealAccumTime = 0;
     nextCastId += 1;
   }
 
   emitCast(now) {
     const cfg = this.config;
-    const count = cfg.projectileCount;
-    const angles = [];
-    if (cfg.castShape === 'circular') {
-      for (let i = 0; i < count; i++) angles.push(randRange(0, TWO_PI));
-    } else {
-      // Cone centered on facing; only emission uses this angle
-      const half = clamp(cfg.coneAngleDeg, 0, 360) * DEG_TO_RAD / 2;
-      const facing = (cfg.casterFacingDeg || 0) * DEG_TO_RAD;
-      for (let i = 0; i < count; i++) angles.push(facing + randRange(-half, half));
-    }
+    // With Salvo: fire base projectiles + 2 per seal consumed
+    const projectilesPerSeal = 2;
+    const baseCount = cfg.projectileCount;
+    const sealCount = this.currentSeals;
+    const totalProjectiles = baseCount + (sealCount * projectilesPerSeal);
+    
     const castId = nextCastId++;
-    for (const angle of angles) {
+    // Calculate effective projectile speed with increased modifier
+    const increasePercent = (this.config.increasedProjSpeed || 0) / 100;
+    const effectiveSpeed = (this.config.baseProjSpeed || 75) * (1 + increasePercent);
+    
+    // Fire base projectiles (group 0)
+    for (let i = 0; i < baseCount; i++) {
+      const angle = randRange(0, TWO_PI);
       this.projectiles.push(new Projectile({
         castId,
         x: this.caster.x,
         y: this.caster.y,
         angle,
-        speed: (BASE_PROJ_SPEED_UNITS * (this.config.projSpeedMod || 1)) * this.scale, // convert to pixels per second
+        speed: effectiveSpeed * this.scale, // convert to pixels per second
         now,
         duration: this.config.duration,
         casterRef: this.caster,
@@ -944,14 +983,42 @@ class Simulation {
         forkTimes: this.config.forkTimes,
         chainCount: this.config.chainCount,
         splitCount: this.config.splitCount,
+        twisterRadius: this.config.twisterRadius,
+        salvoGroup: 0, // base projectiles
       }));
     }
+    
+    // Fire seal projectiles (groups 1, 2, 3, ...)
+    for (let sealIdx = 0; sealIdx < sealCount; sealIdx++) {
+      for (let i = 0; i < projectilesPerSeal; i++) {
+        const angle = randRange(0, TWO_PI);
+        this.projectiles.push(new Projectile({
+          castId,
+          x: this.caster.x,
+          y: this.caster.y,
+          angle,
+          speed: effectiveSpeed * this.scale, // convert to pixels per second
+          now,
+          duration: this.config.duration,
+          casterRef: this.caster,
+          pierceCount: this.config.pierceCount,
+          forkTimes: this.config.forkTimes,
+          chainCount: this.config.chainCount,
+          splitCount: this.config.splitCount,
+          twisterRadius: this.config.twisterRadius,
+          salvoGroup: sealIdx + 1, // seal groups start at 1
+        }));
+      }
+    }
+    
+    // Consume all seals after casting
+    this.currentSeals = 0;
   }
 
   tryApplyHit(proj, now) {
-    // Shared cooldown per cast and target
+    // Per-group cooldown: base (group 0) and each seal group are independent
     const targetId = 'boss';
-    const key = proj.castId + '|' + targetId;
+    const key = proj.castId + '|' + proj.salvoGroup + '|' + targetId;
     const nextOk = this.castTargetLocks.get(key) || 0;
     if (now >= nextOk) {
       this.hitsTotal += 1;
@@ -1010,11 +1077,23 @@ class Simulation {
   step(dt) {
     const now = performance.now();
 
-    // Emit based on cast speed
+    // Seal accumulation (Salvo mechanic)
     if (this.running) {
+      this.lastSealAccumTime += dt;
+      // Calculate effective seal gain frequency with increased modifier
+      const baseSealFreq = this.config.baseSealGainFrequency;
+      const increasePercent = (this.config.increasedSealGainFrequency || 0) / 100;
+      const effectiveSealFreq = baseSealFreq * (1 + increasePercent);
+      const sealAccumInterval = 1.0 / effectiveSealFreq; // time between seals
+      while (this.lastSealAccumTime >= sealAccumInterval && this.currentSeals < this.config.maxSeals) {
+        this.lastSealAccumTime -= sealAccumInterval;
+        this.currentSeals += 1;
+      }
+      
+      // Cast when we have enough seals (based on salvoSealCount config)
       this.castAccumulator += dt;
-      while (this.castAccumulator >= this.config.castInterval) {
-        this.castAccumulator -= this.config.castInterval;
+      while (this.castAccumulator >= 0.01 && this.currentSeals >= this.config.salvoSealCount) {
+        this.castAccumulator -= 0.01;
         this.emitCast(now);
       }
     }
@@ -1100,28 +1179,6 @@ class Simulation {
     // Arena
     this.arena.draw(ctx);
 
-    // If cone casting, draw facing and 90° cone lines from caster
-    if (this.config.castShape === 'cone') {
-      const facing = (this.config.casterFacingDeg || 0) * DEG_TO_RAD;
-      const half = (90 * DEG_TO_RAD) / 2;
-      const r = ARENA_RADIUS_UNITS * this.scale * 0.3; // visual length (cut by ~66%)
-      const angles = [facing - half, facing, facing + half];
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,209,102,0.75)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([6, 6]);
-      ctx.beginPath();
-      for (let i = 0; i < angles.length; i++) {
-        const a = angles[i];
-        const x2 = this.caster.x + Math.cos(a) * r;
-        const y2 = this.caster.y + Math.sin(a) * r;
-        ctx.moveTo(this.caster.x, this.caster.y);
-        ctx.lineTo(x2, y2);
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
-
     // Leash radius removed
 
     // Entities
@@ -1147,6 +1204,12 @@ class Simulation {
   }
 
   updateStats() {
+    // Update seal display
+    const sealDisplay = document.getElementById('currentSealsDisplay');
+    if (sealDisplay) {
+      sealDisplay.textContent = `${this.currentSeals} / ${this.config.maxSeals}`;
+    }
+    
     const hitsPerSec = this.hitTimestamps.length / 5;
     document.getElementById('hitsTotal').textContent = formatShortNumber(this.hitsTotal, 1);
     document.getElementById('hitsPerSec').textContent = hitsPerSec.toFixed(2);
@@ -1286,7 +1349,7 @@ window.addEventListener('DOMContentLoaded', () => {
           p.x = mapped.x; p.y = mapped.y;
           p.vx *= ratio; p.vy *= ratio;
           p.speed *= ratio;
-          p.radius = PROJ_RADIUS_UNITS * sim.scale;
+          p.radius = (p.twisterRadiusUnits || PROJ_RADIUS_UNITS) * sim.scale;
           return p;
         });
         sim.running = prev.running;
