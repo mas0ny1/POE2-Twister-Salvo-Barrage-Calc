@@ -77,10 +77,10 @@ Mechanics modeled
   - Fire count = base projectiles + (2 × number of seals consumed)
   - All seals are consumed when firing
 - Twisters move in straight lines with no steering or jitter
-- **IMPORTANT: Per-cast per-target hit cooldown: 0.66 s. Other projectiles from the same cast pass through during the cooldown
+- **IMPORTANT**: Per-cast per-target hit cooldown: 0.66 s. Other projectiles from the same cast pass through during the cooldown
   - This has been modified to the following behaviour due to Twister and Salvos Interactions. Projectiles fired are grouped into the following "hit groups", all projectiles from a hit group can only hit the same target once every 0.66 seconds, as written on the gems. The hit groups are seperated as follows:
    1. Twister's base 4 projectiles
-   2. Salvo's 2 Additional Projectiles, are treated as seperate hit groups per seal. You can test this by setting "How many seals do you wait for" to 1, then overlapping both the caster and the boss. If you watch the "Hit (total)" value in Charts, it will go up by increments of 2, as the base 4 projectiles are hitting, then the 2 from Salvo are treated as a group and hitting. Therefore there are only 2 counted hits. This Behaviour is also how Barrage is implemented, where each repeat from Barrage is treated as a seperate "hit group".**
+   2. Salvo's 2 Additional Projectiles, are treated as seperate hit groups per seal. You can test this by setting "How many seals do you wait for" to 1, then overlapping both the caster and the boss. If you watch the "Hit (total)" value in Charts, it will go up by increments of 2, as the base 4 projectiles are hitting, then the 2 from Salvo are treated as a group and hitting. Therefore there are only 2 counted hits. This Behaviour is also how Barrage is implemented, where each repeat from Barrage is treated as a seperate "hit group".
 - Projectiles bounce off walls/arena boundaries and ignore the caster
 - Duration ends a projectile.
 - Continuous collision detection (CCD) against the boss prevents tunneling between frames
