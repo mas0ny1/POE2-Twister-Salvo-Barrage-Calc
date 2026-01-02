@@ -37,6 +37,12 @@ Using the previous example with 4 twister from whirling slash stage 3, but no se
 And for seals I believe the same behaviour is followed, so the 2 projectiles created by the 1 seal, when repeated is its own hit group. This results in 4 maximum hits for a 1 seal, 1 barrage count (1 repeat) twister
 If anyone has information that shows that my understanding of this mechanic is incorrect, please let me know. I'd like to have more information to get a more accurate determination of my understanding.
 
+**Things To look into:**
+------------------------------------------
+1. I believe twister has some sort of "homing" where if its close enough to a boss, it will hit. The radius as written on POE2DB is 0.5 meters, however I do not believe this is the hitbox for twister and I feel like its either bigger, or has a very generous hitbox check.
+2. Following this I'm not sure if Twister actually goes in a perfect straight line
+3. Barraged attacks seem to have a very slight deviation to the angle that the projectiles that come out, this was not implemented for this tool
+
 Quick start
 -----------
 - Option A: Open `index.html` directly in a modern browser.
