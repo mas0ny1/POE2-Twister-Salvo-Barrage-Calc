@@ -1222,20 +1222,20 @@ class Simulation {
 
   getGroupColor(salvoGroup, onCooldown = false) {
     // Return highly distinct colors for each salvo group
-    // Bright colors when on cooldown (hit just occurred), dimmed when idle
+    // Bright colors when on cooldown (hit just occurred), dimmed/dark when idle
     const brightColors = [
       '#00FFFF',  // Group 0 (base) - bright cyan
       '#00FF00',  // Group 1 (seal 1) - bright lime green
       '#FFFF00',  // Group 2 (seal 2) - bright yellow
       '#FF1493',  // Group 3 (seal 3) - deep pink/magenta
-      '#00BFFF',  // Group 4+ - deep sky blue
+      '#FF6600',  // Group 4+ - bright orange
     ];
     const dimmColors = [
-      '#0088FF',  // Group 0 (base) - dimmed cyan
-      '#0088FF',  // Group 1 (seal 1) - dimmed green
-      '#8888FF',  // Group 2 (seal 2) - dimmed yellow
-      '#8844FF',  // Group 3 (seal 3) - dimmed pink
-      '#4488FF',  // Group 4+ - dimmed sky blue
+      '#004466',  // Group 0 (base) - dark teal
+      '#004400',  // Group 1 (seal 1) - dark green
+      '#666600',  // Group 2 (seal 2) - dark olive/yellow
+      '#660033',  // Group 3 (seal 3) - dark pink
+      '#663300',  // Group 4+ - dark orange/brown
     ];
     const colors = onCooldown ? brightColors : dimmColors;
     if (salvoGroup < colors.length) {
@@ -1528,6 +1528,25 @@ class Simulation {
     } else {
       projPerCastDiv.textContent = '-';
       projPerCastDiv.style.color = '#7cc5ff';
+    }
+    
+    // Display percentage of total projectiles hit per cast (last 5)
+    const last5HitsPerCast = this.castHitHistory.slice(-5);
+    const last5ProjPerCastForPercent = this.projPerCastHistory.slice(-5);
+    const percentHitPerCastDiv = document.getElementById('percentHitPerCast');
+    if (last5HitsPerCast.length > 0 && last5ProjPerCastForPercent.length > 0 && last5HitsPerCast.length === last5ProjPerCastForPercent.length) {
+      const percentages = [];
+      for (let i = 0; i < last5HitsPerCast.length; i++) {
+        const hits = last5HitsPerCast[i];
+        const projs = last5ProjPerCastForPercent[i];
+        if (projs > 0) {
+          const percent = ((hits / projs) * 100).toFixed(1);
+          percentages.push(percent + '%');
+        }
+      }
+      percentHitPerCastDiv.textContent = percentages.length > 0 ? percentages.join(', ') : '-';
+    } else {
+      percentHitPerCastDiv.textContent = '-';
     }
     
     // Display average hits over last 10 casts
