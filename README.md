@@ -17,6 +17,26 @@ Current assumptions for Twister behavior: https://poe2db.tw/Twister
 - Twisters are 0.5 units (meters) in radius (from POE2DB)
 - Twisters travel in straight lines with no jitter pathing changes. There may be some sort of "homing" for these projectiles, however they are currently being treated as straight line projectiles.
 
+**Hit Rate Implementation Explaination:**
+------------------------------------------
+The Key interaction I will briefly discuss here is regarding the Hit Rate:
+The Twister gem has the following line: 
+Twisters fired at the same time can Hit the same target no more than once every 0.66 seconds
+
+Currently my understanding of this is that Salvo Support, and Barraged repeated attacks bypass this line on Twister, and are treated as their own individual "Hit Groups"
+
+For Example, if I shoot a twister with whirling slash stage 3, that is 4 projectiles. These 4 projectiles can only hit a boss once per 0.66 seconds.
+If I have Salvo support with 1 Seal, that's 2 more projectiles.
+The end result is that my twister can "hit twice" initially, meaning I can get a hit from my 4 projectiles, and another hit from the 2 projectiles from Salvo Support.
+The same logic applies all the way to up 3 seals, where each seal has its own separate hit group, and can all hit with a 0.66s cooldown for all projectiles for each "hit group"
+
+To follow up on this, I would like to talk about Barrage.
+I believe barrage's current implementation is that all repeated attacks are treated as if you are hard casting it very rapidly with very low attack time. This means that non of the hit groups are shared between an attack and its repeat.
+Using the previous example with 4 twister from whirling slash stage 3, but no seals. This means we can get 2 hits fro this, as there are 2 instances of 4 projectiles, but they are grouped into 2 hit groups 
+
+And for seals I believe the same behaviour is followed, so the 2 projectiles created by the 1 seal, when repeated is its own hit group. This results in 4 maximum hits for a 1 seal, 1 barrage count (1 repeat) twister
+If anyone has information that shows that my understanding of this mechanic is incorrect, please let me know. I'd like to have more information to get a more accurate determination of my understanding.
+
 Quick start
 -----------
 - Option A: Open `index.html` directly in a modern browser.
