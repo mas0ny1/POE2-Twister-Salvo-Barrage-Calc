@@ -32,7 +32,7 @@ The same logic applies all the way to up 3 seals, where each seal has its own se
 
 To follow up on this, I would like to talk about Barrage.
 I believe barrage's current implementation is that all repeated attacks are treated as if you are hard casting it very rapidly with very low attack time. This means that non of the hit groups are shared between an attack and its repeat.
-Using the previous example with 4 twister from whirling slash stage 3, but no seals. This means we can get 2 hits fro this, as there are 2 instances of 4 projectiles, but they are grouped into 2 hit groups 
+Using the previous example with 4 twister from whirling slash stage 3, but no seals. This means we can get 2 hits from this, as there are 2 instances of 4 projectiles, but they are grouped into 2 hit groups 
 
 And for seals I believe the same behaviour is followed, so the 2 projectiles created by the 1 seal, when repeated is its own hit group. This results in 4 maximum hits for a 1 seal, 1 barrage count (1 repeat) twister
 If anyone has information that shows that my understanding of this mechanic is incorrect, please let me know. I'd like to have more information to get a more accurate determination of my understanding.
