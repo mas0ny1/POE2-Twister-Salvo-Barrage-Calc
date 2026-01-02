@@ -62,6 +62,16 @@
               <label for="baseSealGainFrequency">Base Seal Gain Frequency (/s)</label>
               <input id="baseSealGainFrequency" type="number" value="0.5" min="0.01" step="0.01" />
             </div>
+
+            <div class="field-group">
+              <label for="timeBetweenBarrageRepeats">Time Between Barrage Repeats (s)</label>
+              <input id="timeBetweenBarrageRepeats" type="number" value="0.15" min="0.01" step="0.01" />
+            </div>
+
+            <div class="field-group">
+              <label for="barrageTimeInterval">Total Time for all Barrages (s)</label>
+              <input id="barrageTimeInterval" type="number" value="0" min="0" step="0.1" />
+            </div>
           </div>
         </section>
 
@@ -99,6 +109,10 @@
             <label for="salvoSealCount">How many seals do you wait for</label>
             <input id="salvoSealCount" type="number" value="3" min="0" step="1" />
           </div>
+          <div class="field-group">
+            <label for="barrageCount">Barrage Count</label>
+            <input id="barrageCount" type="number" value="0" min="0" step="1" />
+          </div>
         </section>
 
         <section class="card">
@@ -131,7 +145,10 @@
             <div class="stat"><span>DPS:</span><strong id="dps">0</strong><canvas id="sparkDps" class="twister" width="160" height="28"></canvas></div>
             <div class="stat"><span>Total Damage:</span><strong id="totalDmg">0</strong><canvas id="sparkDmg" class="twister" width="160" height="28"></canvas></div>
             <div class="stat"><span>Projectiles:</span><strong id="projAlive">0</strong><canvas id="sparkAlive" class="twister" width="160" height="28"></canvas></div>
-            <div class="stat"><span>Casts on CD:</span><strong id="cooldownPct">0%</strong><canvas id="sparkCooldown" class="twister" width="160" height="28"></canvas></div>
+            <div class="stat"><span>Expected Total Projectiles:</span><strong id="expectedTotalProj">0</strong></div>
+            <div class="stat"><span>Hits per Full Cast (last 5):</span><div id="hitsPerCast" style="font-size: 0.9em; color: #7cc5ff; font-weight: bold;">-</div></div>
+            <div class="stat"><span>Projectiles per Full Cast (last 5):</span><div id="projPerCast" style="font-size: 0.9em; color: #7cc5ff; font-weight: bold;">-</div></div>
+            <div class="stat"><span>Avg Hits (last 10 casts):</span><strong id="avgHitsPerCast">0</strong></div>
           </div>
         </section>
 
@@ -141,6 +158,11 @@
       <main id="stage">
         <canvas id="canvas" width="1200" height="800"></canvas>
         <div id="overlay">Drag the caster and boss. Use controls to configure.</div>
+        <div id="distanceDisplay" style="position: absolute; bottom: 20px; right: 20px; background: rgba(0, 0, 0, 0.7); color: #7cc5ff; padding: 10px 15px; border-radius: 5px; font-family: monospace; font-size: 14px; border: 1px solid #7cc5ff;">
+          <div>Distance:</div>
+          <div id="distanceValue">0 U</div>
+          <div id="distanceMeters" style="font-size: 12px; color: #aaa;">0.0 m</div>
+        </div>
       </main>
     </div>
 

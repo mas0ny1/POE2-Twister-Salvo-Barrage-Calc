@@ -54,6 +54,9 @@ function buildURLState(sim) {
     sp: sim.config.splitCount,
     er: sim.config.bossRadius,
     ts: sim.metrics.windowSec,
+    bc: sim.config.barrageCount,
+    bti: sim.config.barrageTimeInterval,
+    tbr: sim.config.timeBetweenBarrageRepeats,
     cxu: casterW.x, cyu: casterW.y,
     bxu: bossW.x, byu: bossW.y,
   };
@@ -122,6 +125,9 @@ function parseURLParams() {
     fc: num('fc'), // forkChance
     ch: num('ch'), // chainCount
     sp: num('sp'), // splitCount
+    bc: num('bc'), // barrageCount
+    bti: num('bti'), // barrageTimeInterval
+    tbr: num('tbr'), // timeBetweenBarrageRepeats
     er: num('er'), // bossRadius
     ts: num('ts'), // chart window (seconds)
     // Positions: support both canvas-normalized (0..1) and world-normalized (relative to arena radius)
@@ -151,6 +157,9 @@ function applyParamsToDOM(params) {
   setIf('baseSealGainFrequency', params.baseSealGainFrequency);
   setIf('maxSeals', params.maxSeals);
   setIf('salvoSealCount', params.salvoSealCount);
+  setIf('barrageCount', params.bc);
+  setIf('barrageTimeInterval', params.bti);
+  setIf('timeBetweenBarrageRepeats', params.tbr);
   setIf('twisterRadius', params.twisterRadius);
   setIf('increasedSealGainFrequency', params.increasedSealGainFrequency);
   setIf('bossRadius', params.er);
@@ -180,6 +189,9 @@ function writeURLParams(state) {
   set('fc', state.fc);
   set('ch', state.ch);
   set('sp', state.sp);
+  set('bc', state.bc);
+  set('bti', state.bti);
+  set('tbr', state.tbr);
   set('er', state.er);
   set('ts', state.ts);
   const fmtN = (n) => (v) => {
@@ -629,6 +641,7 @@ class Projectile {
   constructor(config) {
     this.id = Math.random().toString(36).slice(2);
     this.castId = config.castId;
+    this.instanceId = config.instanceId; // groups main cast + all barrage repeats
     this.x = config.x;
     this.y = config.y;
     this.vx = Math.cos(config.angle) * config.speed;
@@ -649,6 +662,8 @@ class Projectile {
     this.hasSplit = false;
     // Salvo grouping: base projectiles (0), then seal groups (1, 2, 3, ...)
     this.salvoGroup = config.salvoGroup || 0;
+    // Damage multiplier for barrage repeats (0.6 for 40% less damage)
+    this.damageMultiplier = config.damageMultiplier !== undefined ? config.damageMultiplier : 1.0;
   }
   age(now) { return (now - this.spawnTime) / 1000; }
   isExpired(now) {
@@ -704,6 +719,7 @@ class Simulation {
       this.castCooldown = 0; // computed from cast speed
       this.currentSeals = 0; // Salvo seal tracking
       this.lastSealAccumTime = 0; // for seal gain timing
+      this.barrageCastSchedule = []; // scheduled barrage repeats: {time, castNumber}
       // Load from URL params first
       const __params = parseURLParams();
       const __pos = applyParamsToDOM(__params);
@@ -741,6 +757,13 @@ class Simulation {
     this.totalDamage = 0;
     this.hitTimestamps = []; // for recent rate window
     this.castTargetLocks = new Map(); // key: castId+targetId -> nextAllowedHitTime
+    
+    // Per-cast hit tracking
+    this.currentInstanceId = null; // the instance id for current full cast (includes barrage)
+    this.currentCastHits = 0; // hits in current cast (including barrage repeats)
+    this.castHitHistory = []; // history of max hits per cast for averaging
+    this.projPerCastHistory = []; // history of max projectiles per cast
+    this.completedCastInstances = new Map(); // instanceId -> { hits: count, projCount: count, completed: bool }
 
     // Input
     this.dragging = null; // 'caster' | 'boss'
@@ -850,6 +873,7 @@ class Simulation {
       avgHit: getNum('avgHit'),
       increasedProjSpeed: getNum('projSpeedMod') || 0, // percentage increase
       projectileCount: getNum('projectileCount'),
+      whirlwindStages: getNum('whirlwindStages'),
       twisterRadius: getNum('twisterRadius'),
       duration: getNum('duration'),
       pierceCount: 999, // Twisters always pierce
@@ -860,9 +884,12 @@ class Simulation {
       bossRadius: getNum('bossRadius') || BOSS_RADIUS_UNITS,
       maxSeals: getNum('maxSeals'),
       salvoSealCount: getNum('salvoSealCount'),
+      barrageCount: getNum('barrageCount'),
+      barrageTimeInterval: getNum('barrageTimeInterval'),
+      timeBetweenBarrageRepeats: getNum('timeBetweenBarrageRepeats'),
       baseSealGainFrequency: getNum('baseSealGainFrequency'),
       baseProjSpeed: getNum('baseProjSpeed'),
-      increasedSealGainFrequency: getNum('increasedSealGainFrequency') || 0,
+      increasedSealGainFrequency: getNum('increasedSealGainFrequency'),
     };
   }
 
@@ -874,12 +901,14 @@ class Simulation {
 
   installUI() {
     const ids = [
-      'arenaType','avgHit','projSpeedMod','projectileCount','whirlwindStages','twisterRadius','duration','bossRadius','maxSeals','salvoSealCount','baseSealGainFrequency','baseProjSpeed','increasedSealGainFrequency'
+      'arenaType','avgHit','projSpeedMod','projectileCount','whirlwindStages','twisterRadius','duration','bossRadius','maxSeals','salvoSealCount','barrageCount','barrageTimeInterval','timeBetweenBarrageRepeats','baseSealGainFrequency','baseProjSpeed','increasedSealGainFrequency'
     ];
     for (const id of ids) {
       const elem = document.getElementById(id);
       if (elem) {
         elem.addEventListener('input', () => {
+          // Ensure simulation is not running when updating config
+          this.running = false;
           this.config = this.readConfigFromDOM();
           this.arena = this.createArena(this.config.arenaType);
           // live-apply enemy radius
@@ -889,6 +918,28 @@ class Simulation {
           updateURL(this);
         });
       }
+    }
+
+    // Link barrageCount, timeBetweenBarrageRepeats, and barrageTimeInterval
+    // Total Time = Number of Barrages × Time between repeats
+    const barrageCountElem = document.getElementById('barrageCount');
+    const timeBetweenElem = document.getElementById('timeBetweenBarrageRepeats');
+    const totalTimeElem = document.getElementById('barrageTimeInterval');
+    
+    const updateLinkedValues = () => {
+      const barrageCount = Number(barrageCountElem?.value || 0);
+      const timeBetween = Number(timeBetweenElem?.value || 0);
+      const totalTime = barrageCount * timeBetween;
+      if (totalTimeElem) totalTimeElem.value = totalTime.toFixed(2);
+      this.config = this.readConfigFromDOM();
+      updateURL(this);
+    };
+    
+    if (barrageCountElem) {
+      barrageCountElem.addEventListener('input', updateLinkedValues);
+    }
+    if (timeBetweenElem) {
+      timeBetweenElem.addEventListener('input', updateLinkedValues);
     }
 
     const timeScaleElem = document.getElementById('timeScale');
@@ -904,6 +955,7 @@ class Simulation {
     if (startBtn) {
       startBtn.addEventListener('click', () => { 
         this.running = true;
+        this.castAccumulator = 0; // Reset cast accumulator to prevent immediate cast
         // Set to max seals and emit immediately
         this.currentSeals = this.config.maxSeals;
         this.emitCast(performance.now());
@@ -912,7 +964,10 @@ class Simulation {
     
     const stopBtn = document.getElementById('stopBtn');
     if (stopBtn) {
-      stopBtn.addEventListener('click', () => { this.running = false; });
+      stopBtn.addEventListener('click', () => { 
+        this.running = false;
+        this.castAccumulator = 0; // Reset cast accumulator when stopping
+      });
     }
     
     const resetBtn = document.getElementById('resetBtn');
@@ -944,6 +999,8 @@ class Simulation {
   }
 
   reset() {
+    this.running = false;
+    this.castAccumulator = 0;
     this.projectiles = [];
     this.hitsTotal = 0;
     this.totalDamage = 0;
@@ -951,27 +1008,82 @@ class Simulation {
     this.castTargetLocks.clear();
     this.currentSeals = 0;
     this.lastSealAccumTime = 0;
+    this.barrageCastSchedule = [];
+    this.currentInstanceId = null;
+    this.currentCastHits = 0;
+    this.castHitHistory = [];
+    this.projPerCastHistory = [];
+    this.completedCastInstances.clear();
     nextCastId += 1;
   }
 
-  emitCast(now) {
+  // Calculate barrage repeat timing based on barrage count
+  getBarrageTimingWindow(barrageCount) {
+    // Data points from testing:
+    // 2 barrage stacks: ~2.5 seconds
+    // 3 barrage stacks: ~2.5 seconds
+    // 16 barrage stacks: ~4.5 seconds
+    // This represents total cast window for all repeats
+    if (barrageCount <= 0) return 0;
+    if (barrageCount <= 3) return 2.5;
+    // Linear interpolation for barrage counts > 3
+    // At 16 stacks: 4.5 seconds
+    return 2.5 + (barrageCount - 3) * ((4.5 - 2.5) / (16 - 3));
+  }
+
+  // Calculate expected projectile count for a full cast instance using formula:
+  // Proj Count = (1 + W + 2S)(1 + B)
+  // W = whirlwind stages, S = seals, B = barrage count
+  calculateExpectedProjectileCount(config, sealCount) {
+    const w = config.whirlwindStages || 0;
+    const s = sealCount || 0;
+    const b = config.barrageCount || 0;
+    const projectileCountPerCast = (1 + w + 2 * s) * (1 + b);
+    return projectileCountPerCast;
+  }
+
+  // Helper: emit projectiles for a single cast instance
+  // barrageRepeatIndex: 0 for main cast, 1+ for barrage repeats
+  // This method is called once for the main cast and once for each barrage repeat
+  // Each call emits: baseCount + (sealCount * 2) projectiles
+  // sealCount: if provided, use this seal count; otherwise use current seals
+  // angles: if provided, use these angles; otherwise generate random. Returns array of angles used if barrageRepeatIndex === 0
+  emitCastProjectiles(castId, now, barrageRepeatIndex = 0, sealCount = null, angles = null, instanceId = null) {
     const cfg = this.config;
     // With Salvo: fire base projectiles + stages + 2 per seal consumed
+    // Base: projectileCount + whirlwindStages
+    // Seals: 2 projectiles per seal
+    // Total per emission: (1 + W + 2S)
+    // This gets emitted (1 + B) times total (once for main, once for each barrage)
+    // Overall per cast instance: (1 + W + 2S) * (1 + B)
     const projectilesPerSeal = 2;
-    const baseCount = cfg.projectileCount + (cfg.whirlwindStages || 0);
-    const sealCount = this.currentSeals;
-    const totalProjectiles = baseCount + (sealCount * projectilesPerSeal);
+    // Base projectiles: 1 (base) + W (whirlwind stages)
+    // cfg.projectileCount represents the base count which should contribute to the 1
+    const baseCount = 1 + (cfg.whirlwindStages || 0);
+    const actualSealCount = sealCount !== null ? sealCount : this.currentSeals;
     
-    const castId = nextCastId++;
     // Calculate effective projectile speed with increased modifier
     const increasePercent = (this.config.increasedProjSpeed || 0) / 100;
     const effectiveSpeed = (this.config.baseProjSpeed || 75) * (1 + increasePercent);
     
+    // Calculate damage multiplier: 80% more damage per whirlwind stage (stacks additively)
+    // 0 stages = 1.0x, 1 stage = 1.8x, 2 stages = 2.6x, 3 stages = 3.4x, etc.
+    const whirlwindDamageMultiplier = 1.0 + (cfg.whirlwindStages || 0) * 0.8;
+    
+    // If this is the main cast (barrageRepeatIndex === 0) and no angles provided, generate and track them
+    const capturedAngles = (barrageRepeatIndex === 0 && !angles) ? [] : null;
+    let angleIdx = 0;
+    
     // Fire base projectiles (group 0)
     for (let i = 0; i < baseCount; i++) {
-      const angle = randRange(0, TWO_PI);
+      const angle = angles ? angles[angleIdx++] : randRange(0, TWO_PI);
+      if (capturedAngles) capturedAngles.push(angle);
+      // Apply barrage repeat damage reduction if needed, combined with whirlwind boost
+      const barrageMultiplier = barrageRepeatIndex > 0 ? 0.55 : 1.0; // 45% less damage for repeats
+      const damageMultiplier = barrageMultiplier * whirlwindDamageMultiplier;
       this.projectiles.push(new Projectile({
         castId,
+        instanceId,
         x: this.caster.x,
         y: this.caster.y,
         angle,
@@ -985,15 +1097,21 @@ class Simulation {
         splitCount: this.config.splitCount,
         twisterRadius: this.config.twisterRadius,
         salvoGroup: 0, // base projectiles
+        damageMultiplier,
       }));
     }
     
     // Fire seal projectiles (groups 1, 2, 3, ...)
-    for (let sealIdx = 0; sealIdx < sealCount; sealIdx++) {
+    for (let sealIdx = 0; sealIdx < actualSealCount; sealIdx++) {
       for (let i = 0; i < projectilesPerSeal; i++) {
-        const angle = randRange(0, TWO_PI);
+        const angle = angles ? angles[angleIdx++] : randRange(0, TWO_PI);
+        if (capturedAngles) capturedAngles.push(angle);
+        // Apply barrage repeat damage reduction if needed, combined with whirlwind boost
+        const barrageMultiplier = barrageRepeatIndex > 0 ? 0.55 : 1.0; // 45% less damage for repeats
+        const damageMultiplier = barrageMultiplier * whirlwindDamageMultiplier;
         this.projectiles.push(new Projectile({
           castId,
+          instanceId,
           x: this.caster.x,
           y: this.caster.y,
           angle,
@@ -1007,7 +1125,56 @@ class Simulation {
           splitCount: this.config.splitCount,
           twisterRadius: this.config.twisterRadius,
           salvoGroup: sealIdx + 1, // seal groups start at 1
+          damageMultiplier,
         }));
+      }
+    }
+    
+    // Return captured angles and projectile count for barrage repeats to use
+    const projCount = baseCount + (actualSealCount * projectilesPerSeal);
+    return { angles: capturedAngles, projCount };
+  }
+
+  emitCast(now) {
+    const cfg = this.config;
+    const castId = nextCastId++;
+    const instanceId = castId; // use castId as the instance identifier
+    
+    // Track the instance and reset hits for this cast
+    this.currentInstanceId = instanceId;
+    this.currentCastHits = 0;
+    // Register this instance in the tracking map
+    this.completedCastInstances.set(instanceId, { hits: 0, projCount: 0, completed: false });
+    
+    // Emit main cast and capture the angles and projectile count
+    const castResult = this.emitCastProjectiles(castId, now, 0, null, null, instanceId);
+    const castAngles = castResult.angles;
+    const projCountPerEmission = castResult.projCount;
+    
+    // Add main cast projectile count to instance total
+    this.completedCastInstances.get(instanceId).projCount += projCountPerEmission;
+    
+    // Schedule barrage repeats if enabled
+    if (cfg.barrageCount > 0) {
+      // Use timeBetweenBarrageRepeats to space repeats
+      const timeBetweenRepeats = cfg.timeBetweenBarrageRepeats || 0.15;
+      // Capture the seal count for all repeats to use
+      const castSealCount = this.currentSeals;
+      // Space each repeat based on timeBetweenBarrageRepeats
+      for (let repeatIdx = 1; repeatIdx <= cfg.barrageCount; repeatIdx++) {
+        // Space repeats linearly: first repeat at timeBetweenRepeats, second at 2x, etc.
+        const repeatTime = timeBetweenRepeats * repeatIdx;
+        const repeatTimeMs = repeatTime * 1000;
+        // Each barrage repeat gets a unique castId for independent hit groups
+        const barrageRepeatCastId = nextCastId++;
+        this.barrageCastSchedule.push({
+          time: now + repeatTimeMs,
+          castId: barrageRepeatCastId,
+          instanceId: instanceId,
+          barrageRepeatIndex: repeatIdx,
+          sealCount: castSealCount,
+          angles: castAngles,
+        });
       }
     }
     
@@ -1022,8 +1189,21 @@ class Simulation {
     const nextOk = this.castTargetLocks.get(key) || 0;
     if (now >= nextOk) {
       this.hitsTotal += 1;
-      this.totalDamage += this.config.avgHit;
+      const damage = this.config.avgHit * (proj.damageMultiplier || 1.0);
+      this.totalDamage += damage;
       this.hitTimestamps.push(now);
+      
+      // Track hits for current full cast instance (including barrage repeats)
+      if (proj.instanceId === this.currentInstanceId) {
+        this.currentCastHits += 1;
+      }
+      
+      // Also update the tracking map for this instance
+      if (this.completedCastInstances.has(proj.instanceId)) {
+        const entry = this.completedCastInstances.get(proj.instanceId);
+        entry.hits = Math.max(entry.hits, this.currentCastHits); // track max hits
+      }
+      
       this.castTargetLocks.set(key, now + PER_CAST_TARGET_COOLDOWN * 1000);
       return true;
     }
@@ -1097,6 +1277,20 @@ class Simulation {
       while (this.castAccumulator >= 0.01 && this.currentSeals >= sealThreshold) {
         this.castAccumulator -= 0.01;
         this.emitCast(now);
+      }
+      
+      // Process scheduled barrage repeats
+      for (let i = this.barrageCastSchedule.length - 1; i >= 0; i--) {
+        const scheduled = this.barrageCastSchedule[i];
+        if (now >= scheduled.time) {
+          // Time to emit this barrage repeat with the same angles as the original cast
+          const barrageResult = this.emitCastProjectiles(scheduled.castId, scheduled.time, scheduled.barrageRepeatIndex, scheduled.sealCount, scheduled.angles, scheduled.instanceId);
+          // Add barrage repeat projectile count to instance total
+          if (this.completedCastInstances.has(scheduled.instanceId)) {
+            this.completedCastInstances.get(scheduled.instanceId).projCount += barrageResult.projCount;
+          }
+          this.barrageCastSchedule.splice(i, 1);
+        }
       }
     }
 
@@ -1172,6 +1366,26 @@ class Simulation {
     const windowMs = 5000;
     const cutoff = now - windowMs;
     while (this.hitTimestamps.length && this.hitTimestamps[0] < cutoff) this.hitTimestamps.shift();
+
+    // Check if cast instances are complete (no projectiles from that instance remain)
+    for (const [instanceId, entry] of this.completedCastInstances) {
+      if (!entry.completed) {
+        const hasProjectilesFromInstance = this.projectiles.some(p => p.instanceId === instanceId);
+        if (!hasProjectilesFromInstance) {
+          // All projectiles from this instance are gone, mark as complete
+          entry.completed = true;
+          this.castHitHistory.push(entry.hits);
+          this.projPerCastHistory.push(entry.projCount);
+          // Keep only last 10 cast histories for averaging
+          if (this.castHitHistory.length > 10) {
+            this.castHitHistory.shift();
+          }
+          if (this.projPerCastHistory.length > 10) {
+            this.projPerCastHistory.shift();
+          }
+        }
+      }
+    }
   }
 
   draw() {
@@ -1203,6 +1417,33 @@ class Simulation {
     ctx.fillText('Caster', this.caster.x + 12, this.caster.y + 4);
     ctx.fillText('Boss', this.boss.x + 24, this.boss.y + 4);
     ctx.restore();
+
+    // Update distance display
+    this.updateDistanceDisplay();
+  }
+
+  updateDistanceDisplay() {
+    // Calculate distance between caster and boss in world units
+    const dx = this.boss.x - this.caster.x;
+    const dy = this.boss.y - this.caster.y;
+    const distancePixels = Math.hypot(dx, dy);
+    
+    // Convert from pixels to world units (scale is pixels per world unit)
+    const distanceUnits = distancePixels / this.scale;
+    
+    // Convert units to meters (10 units = 1 meter)
+    const distanceMeters = distanceUnits / 10;
+    
+    // Update the display
+    const distanceValueElem = document.getElementById('distanceValue');
+    const distanceMetersElem = document.getElementById('distanceMeters');
+    
+    if (distanceValueElem) {
+      distanceValueElem.textContent = distanceUnits.toFixed(1) + ' U';
+    }
+    if (distanceMetersElem) {
+      distanceMetersElem.textContent = distanceMeters.toFixed(2) + ' m';
+    }
   }
 
   updateStats() {
@@ -1219,21 +1460,54 @@ class Simulation {
     document.getElementById('dps').textContent = formatShortNumber(dps, 1);
     document.getElementById('totalDmg').textContent = formatShortNumber(this.totalDamage, 1);
     document.getElementById('projAlive').textContent = formatShortNumber(this.projectiles.length, 0);
-    // cooldown percent = casts whose cooldown to boss is still active
-    const now = performance.now();
-    let castsOnCd = 0, castIds = new Set();
-    for (const p of this.projectiles) castIds.add(p.castId);
-    for (const id of castIds) {
-      const key = id + '|boss';
-      const nextOk = this.castTargetLocks.get(key) || 0;
-      if (now < nextOk) castsOnCd += 1;
+    
+    // Calculate and display expected total projectiles using formula: (1 + W + 2S)(1 + B)
+    // W = whirlwind stages, S = seals waited for (salvoSealCount), B = barrage count
+    const expectedProjCount = this.calculateExpectedProjectileCount(this.config, this.config.salvoSealCount);
+    const expectedTotalDiv = document.getElementById('expectedTotalProj');
+    expectedTotalDiv.textContent = expectedProjCount;
+    
+    // Display last 5 completed casts (or fewer if less than 5 exist)
+    const last5Casts = this.castHitHistory.slice(-5);
+    const hitsPerCastDiv = document.getElementById('hitsPerCast');
+    if (last5Casts.length > 0) {
+      hitsPerCastDiv.textContent = last5Casts.map(h => h).join(', ');
+    } else {
+      hitsPerCastDiv.textContent = '-';
     }
-    const cooldownPct = castIds.size ? (castsOnCd / castIds.size) * 100 : 0;
-    document.getElementById('cooldownPct').textContent = cooldownPct.toFixed(0) + '%';
-    this.updateCharts(hitsPerSec, dps, cooldownPct);
+    
+    // Display last 5 projectiles per cast and verify against expected
+    const last5ProjPerCast = this.projPerCastHistory.slice(-5);
+    const projPerCastDiv = document.getElementById('projPerCast');
+    if (last5ProjPerCast.length > 0) {
+      const projPerCastText = last5ProjPerCast.map(p => p).join(', ');
+      projPerCastDiv.textContent = projPerCastText;
+      // Verify the most recent completed cast matches expected
+      const mostRecentProj = last5ProjPerCast[last5ProjPerCast.length - 1];
+      if (mostRecentProj !== expectedProjCount) {
+        projPerCastDiv.title = `Expected: ${expectedProjCount}, Got: ${mostRecentProj} - MISMATCH`;
+        projPerCastDiv.style.color = '#ff6b6b'; // red for mismatch
+      } else {
+        projPerCastDiv.title = 'Matches expected formula';
+        projPerCastDiv.style.color = '#7cc5ff'; // normal blue
+      }
+    } else {
+      projPerCastDiv.textContent = '-';
+      projPerCastDiv.style.color = '#7cc5ff';
+    }
+    
+    // Display average hits over last 10 casts
+    let avgHits = 0;
+    if (this.castHitHistory.length > 0) {
+      const totalHits = this.castHitHistory.reduce((a, b) => a + b, 0);
+      avgHits = totalHits / this.castHitHistory.length;
+    }
+    document.getElementById('avgHitsPerCast').textContent = avgHits.toFixed(1);
+    
+    this.updateCharts(hitsPerSec, dps);
   }
 
-  updateCharts(hitsPerSec, dps, cooldownPct) {
+  updateCharts(hitsPerSec, dps) {
     const now = performance.now();
     if (now - this.metrics.lastSampleAt >= this.metrics.sampleIntervalMs) {
       this.metrics.lastSampleAt = now;
@@ -1244,7 +1518,6 @@ class Simulation {
         dps,
         totalDamage: this.totalDamage,
         projAlive: this.projectiles.length,
-        cooldownPct,
       });
       // drop old samples beyond window
       const cutoff = now - this.metrics.windowSec * 1000;
@@ -1257,7 +1530,6 @@ class Simulation {
     this.drawSpark('sparkDps', s.map(p => p.dps));
     this.drawSpark('sparkDmg', s.map(p => p.totalDamage));
     this.drawSpark('sparkAlive', s.map(p => p.projAlive));
-    this.drawSpark('sparkCooldown', s.map(p => p.cooldownPct));
   }
 
   drawSpark(canvasId, values) {
