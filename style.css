@@ -54,6 +54,45 @@ body {
   letter-spacing: 0.2px;
 }
 
+.collapsible-header {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #cbd6e9;
+  letter-spacing: 0.2px;
+}
+
+.collapsible-header:hover {
+  opacity: 0.8;
+}
+
+.toggle-arrow {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  font-size: 12px;
+}
+
+.collapsible-header.collapsed .toggle-arrow {
+  transform: rotate(-90deg);
+}
+
+.collapsible-content {
+  max-height: 1000px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  opacity: 1;
+}
+
+.collapsible-content.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
 .card:last-child { margin-bottom: 0; }
 
 .field-group { margin-bottom: 12px; }

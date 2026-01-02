@@ -27,31 +27,41 @@
           </div>
         </section>
 
-        <section class="card">
-          <h3>Skill Behaviour</h3>
-          <div class="field-group">
-            <label for="projectileCount">Base Projectiles</label>
-            <input id="projectileCount" type="number" value="4" min="1" step="1" />
-          </div>
+        <section class="card" id="skillBehaviourSection">
+          <h3 class="collapsible-header" id="skillBehaviourToggle">
+            <span class="toggle-arrow">▼</span>
+            Skill Behaviour
+          </h3>
+          <div class="collapsible-content" id="skillBehaviourContent">
+            <div class="field-group">
+              <label for="projectileCount">Base Projectiles</label>
+              <input id="projectileCount" type="number" value="1" min="1" step="1" />
+            </div>
 
-          <div class="field-group">
-            <label for="baseProjSpeed">Base Projectile Speed (u/s)</label>
-            <input id="baseProjSpeed" type="number" value="75" min="1" step="1" />
-          </div>
+            <div class="field-group">
+              <label for="whirlwindStages">Whirlwind Stages</label>
+              <input id="whirlwindStages" type="number" value="3" min="0" step="1" />
+            </div>
 
-          <div class="field-group">
-            <label for="twisterRadius">Twister Radius (units)</label>
-            <input id="twisterRadius" type="number" value="0.5" min="0.1" step="0.1" />
-          </div>
+            <div class="field-group">
+              <label for="baseProjSpeed">Base Projectile Speed (u/s)</label>
+              <input id="baseProjSpeed" type="number" value="75" min="1" step="1" />
+            </div>
 
-          <div class="field-group">
-            <label for="duration">Duration (s)</label>
-            <input id="duration" type="number" value="3" min="0" step="0.1" />
-          </div>
+            <div class="field-group">
+              <label for="twisterRadius">Twister Radius (units)</label>
+              <input id="twisterRadius" type="number" value="0.5" min="0.1" step="0.1" />
+            </div>
 
-          <div class="field-group">
-            <label for="baseSealGainFrequency">Base Seal Gain Frequency (/s)</label>
-            <input id="baseSealGainFrequency" type="number" value="0.5" min="0.01" step="0.01" />
+            <div class="field-group">
+              <label for="duration">Duration (s)</label>
+              <input id="duration" type="number" value="3" min="0" step="0.1" />
+            </div>
+
+            <div class="field-group">
+              <label for="baseSealGainFrequency">Base Seal Gain Frequency (/s)</label>
+              <input id="baseSealGainFrequency" type="number" value="0.5" min="0.01" step="0.01" />
+            </div>
           </div>
         </section>
 

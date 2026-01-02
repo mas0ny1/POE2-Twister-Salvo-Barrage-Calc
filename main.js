@@ -874,7 +874,7 @@ class Simulation {
 
   installUI() {
     const ids = [
-      'arenaType','avgHit','projSpeedMod','projectileCount','twisterRadius','duration','bossRadius','maxSeals','salvoSealCount','baseSealGainFrequency','baseProjSpeed','increasedSealGainFrequency'
+      'arenaType','avgHit','projSpeedMod','projectileCount','whirlwindStages','twisterRadius','duration','bossRadius','maxSeals','salvoSealCount','baseSealGainFrequency','baseProjSpeed','increasedSealGainFrequency'
     ];
     for (const id of ids) {
       const elem = document.getElementById(id);
@@ -956,9 +956,9 @@ class Simulation {
 
   emitCast(now) {
     const cfg = this.config;
-    // With Salvo: fire base projectiles + 2 per seal consumed
+    // With Salvo: fire base projectiles + stages + 2 per seal consumed
     const projectilesPerSeal = 2;
-    const baseCount = cfg.projectileCount;
+    const baseCount = cfg.projectileCount + (cfg.whirlwindStages || 0);
     const sealCount = this.currentSeals;
     const totalProjectiles = baseCount + (sealCount * projectilesPerSeal);
     
@@ -1091,8 +1091,10 @@ class Simulation {
       }
       
       // Cast when we have enough seals (based on salvoSealCount config)
+      // If salvoSealCount is 0, treat it as 1 for timing purposes
       this.castAccumulator += dt;
-      while (this.castAccumulator >= 0.01 && this.currentSeals >= this.config.salvoSealCount) {
+      const sealThreshold = this.config.salvoSealCount === 0 ? 1 : this.config.salvoSealCount;
+      while (this.castAccumulator >= 0.01 && this.currentSeals >= sealThreshold) {
         this.castAccumulator -= 0.01;
         this.emitCast(now);
       }
@@ -1361,6 +1363,42 @@ window.addEventListener('DOMContentLoaded', () => {
   window.__sim = new Simulation(canvas);
   window.__currentScale = window.__sim.scale;
   resize();
+
+  // Initialize collapsible sections
+  initializeCollapsibles();
 });
+
+function initializeCollapsibles() {
+  const skillBehaviourToggle = el('skillBehaviourToggle');
+  const skillBehaviourContent = el('skillBehaviourContent');
+
+  if (skillBehaviourToggle && skillBehaviourContent) {
+    // Load saved state from localStorage, default to collapsed
+    const isExpanded = localStorage.getItem('skillBehaviourCollapsed') === 'false';
+    if (!isExpanded) {
+      skillBehaviourToggle.classList.add('collapsed');
+      skillBehaviourContent.classList.add('collapsed');
+    }
+
+    // Toggle on click
+    skillBehaviourToggle.addEventListener('click', () => {
+      skillBehaviourToggle.classList.toggle('collapsed');
+      skillBehaviourContent.classList.toggle('collapsed');
+      const collapsed = skillBehaviourToggle.classList.contains('collapsed');
+      localStorage.setItem('skillBehaviourCollapsed', collapsed);
+    });
+  }
+
+  // Add validation for salvoSealCount - correct 0 to 1
+  const salvoSealCountInput = el('salvoSealCount');
+  if (salvoSealCountInput) {
+    salvoSealCountInput.addEventListener('change', () => {
+      const value = parseInt(salvoSealCountInput.value, 10);
+      if (isNaN(value) || value < 1) {
+        salvoSealCountInput.value = 1;
+      }
+    });
+  }
+}
 
 
