@@ -642,6 +642,7 @@ class Projectile {
     this.id = Math.random().toString(36).slice(2);
     this.castId = config.castId;
     this.instanceId = config.instanceId; // groups main cast + all barrage repeats
+    this.barrageRepeatIndex = config.barrageRepeatIndex || 0; // 0 = main, 1+ = barrage repeat number
     this.x = config.x;
     this.y = config.y;
     this.vx = Math.cos(config.angle) * config.speed;
@@ -791,6 +792,8 @@ class Simulation {
       const theta = (i / n) * TWO_PI;
       this.projectiles.push(new Projectile({
         castId: proj.castId,
+        instanceId: proj.instanceId,
+        barrageRepeatIndex: proj.barrageRepeatIndex,
         x: proj.x,
         y: proj.y,
         angle: theta,
@@ -804,6 +807,7 @@ class Simulation {
         splitCount: 0,
         twisterRadius: this.config.twisterRadius,
         salvoGroup: proj.salvoGroup,
+        damageMultiplier: proj.damageMultiplier,
       }));
     }
     return 'remove';
@@ -824,6 +828,8 @@ class Simulation {
     for (const a of childAngles) {
       this.projectiles.push(new Projectile({
         castId: proj.castId,
+        instanceId: proj.instanceId,
+        barrageRepeatIndex: proj.barrageRepeatIndex,
         x: proj.x,
         y: proj.y,
         angle: a,
@@ -837,6 +843,7 @@ class Simulation {
         splitCount: 0,
         twisterRadius: this.config.twisterRadius,
         salvoGroup: proj.salvoGroup,
+        damageMultiplier: proj.damageMultiplier,
       }));
     }
     return 'remove';
@@ -1084,6 +1091,7 @@ class Simulation {
       this.projectiles.push(new Projectile({
         castId,
         instanceId,
+        barrageRepeatIndex,
         x: this.caster.x,
         y: this.caster.y,
         angle,
@@ -1112,6 +1120,7 @@ class Simulation {
         this.projectiles.push(new Projectile({
           castId,
           instanceId,
+          barrageRepeatIndex,
           x: this.caster.x,
           y: this.caster.y,
           angle,
@@ -1183,9 +1192,10 @@ class Simulation {
   }
 
   tryApplyHit(proj, now) {
-    // Per-group cooldown: base (group 0) and each seal group are independent
+    // Per-group cooldown: each barrage repeat + each seal group combination is independent
+    // Key: instanceId | barrageRepeatIndex | salvoGroup | targetId
     const targetId = 'boss';
-    const key = proj.castId + '|' + proj.salvoGroup + '|' + targetId;
+    const key = proj.instanceId + '|' + proj.barrageRepeatIndex + '|' + proj.salvoGroup + '|' + targetId;
     const nextOk = this.castTargetLocks.get(key) || 0;
     if (now >= nextOk) {
       this.hitsTotal += 1;
@@ -1208,6 +1218,30 @@ class Simulation {
       return true;
     }
     return false;
+  }
+
+  getGroupColor(salvoGroup, onCooldown = false) {
+    // Return highly distinct colors for each salvo group
+    // Bright colors when on cooldown (hit just occurred), dimmed when idle
+    const brightColors = [
+      '#00FFFF',  // Group 0 (base) - bright cyan
+      '#00FF00',  // Group 1 (seal 1) - bright lime green
+      '#FFFF00',  // Group 2 (seal 2) - bright yellow
+      '#FF1493',  // Group 3 (seal 3) - deep pink/magenta
+      '#00BFFF',  // Group 4+ - deep sky blue
+    ];
+    const dimmColors = [
+      '#0088FF',  // Group 0 (base) - dimmed cyan
+      '#0088FF',  // Group 1 (seal 1) - dimmed green
+      '#8888FF',  // Group 2 (seal 2) - dimmed yellow
+      '#8844FF',  // Group 3 (seal 3) - dimmed pink
+      '#4488FF',  // Group 4+ - dimmed sky blue
+    ];
+    const colors = onCooldown ? brightColors : dimmColors;
+    if (salvoGroup < colors.length) {
+      return colors[salvoGroup];
+    }
+    return colors[colors.length - 1];
   }
 
   handleProjectileEnemyCollision(proj, now) {
@@ -1401,13 +1435,13 @@ class Simulation {
     this.caster.draw(ctx);
     this.boss.draw(ctx);
 
-    // Projectiles (orange when cast's cooldown active for boss)
+    // Projectiles: bright group color when hit (on cooldown), dimmed when idle
     for (const p of this.projectiles) {
-      let override = undefined;
-      const key = p.castId + '|boss';
+      const key = p.instanceId + '|' + p.barrageRepeatIndex + '|' + p.salvoGroup + '|boss';
       const nextOk = this.castTargetLocks.get(key) || 0;
-      if (performance.now() < nextOk) override = '#ffa94d';
-      p.draw(ctx, override);
+      const onCooldown = performance.now() < nextOk;
+      const color = this.getGroupColor(p.salvoGroup, onCooldown);
+      p.draw(ctx, color);
     }
 
     // Legend
