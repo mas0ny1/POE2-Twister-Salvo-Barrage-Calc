@@ -1,4 +1,4 @@
-Twister Simulator (Path of Exile 2 – Twister DPS Sandbox)
+Twister - Salvo Support - Barrage Simulator (Path of Exile 2)
 ==========================================================
 
 Web app to visualize and approximate Path of Exile 2's Twister projectile behavior and DPS. Runs entirely in the browser using a single HTML page, CSS, and vanilla JavaScript.
