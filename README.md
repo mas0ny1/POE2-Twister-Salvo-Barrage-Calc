@@ -15,7 +15,7 @@ Current assumptions for Twister behavior: https://poe2db.tw/Twister
 - Boss radius is 3 units (This is the unit of measurement for Maven from Path of Exile 1 and was left as default)
 - Default Circle Arena is 160 units in radius (This is Maven's Arena size in POE1 and was left as default)
 - Twisters are 0.5 units (meters) in radius (from POE2DB)
-- Twisters travel in straight lines with no jitter pathing changes
+- Twisters travel in straight lines with no jitter pathing changes. There may be some sort of "homing" for these projectiles, however they are currently being treated as straight line projectiles.
 
 Quick start
 -----------
@@ -46,16 +46,18 @@ Repository layout
 
 Controls (side panel)
 ---------------------
-
 - Simulation
   - Arena Layout: Circle, Square, T‑Junction
   - Start / Stop / Reset (Self Explanatory)
 - Skill Behaviour
-  - Base Projectiles (Set to 4 as Default, 1 from Twister, 3 from Stage 3 Whirling Slash)
+  - Base Projectiles (Set to 1 as Default)
+  - Whirlwind Stages (Set to 3 as Default, these are generated from Whirling Slash)
   - Base Projectile Speed (units/s)
   - Twister Radius (units or meters)
   - Duration (seconds)
   - Base Seal Gain Frequency (/s) — how fast seals accumulate (default 0.5 = 1 seal per 2 seconds). As Per the Salvo Support gem: Supported Skills Accumulate a seal every 2 seconds
+  - Time between Barrage Repeats (This is a value set based on my testing of barrage, it is an estimate and is very difficult to test, but is basically the time between each repeated cast from barrage)
+  - Total time for all Barrages (This value is dynamically updated with "Time between Barrage Repeats" multipled by "Barrage Count")
 - Character Stats
   - Average Hit (Use Path of Building 2 to get this value)
   - Increased Projectile Speed (%) (Can be found in game using the Gem tab Pop-out/Advanced Information for Twister, or in Path of Building 2)
@@ -64,11 +66,20 @@ Controls (side panel)
   - Current Seals (This is a live counter for the number of seals your character has, it is updated live when you click "Start")
 - Character Behavior
   - How many seals do you wait for (pretty self explanatory)
+  - Barrage Count (How many barrage repeats are you getting, can be found on your skill icon, on the bottom right where you assign skills to keybinds, in game after pressing barrage)
 - Enemy
   - Enemy Radius (units). Default 3 units (boss-sized for POE1)
 - Charts
   - Chart Timescale: 5s, 10s, 30s, 60s, 120s
   - Sparklines: Hits (total), Hit Rate (/s), DPS, Total Damage, Projectiles Alive
+  - Expected Total Projectiles: The number of expected projectiles per cast + repeat, based on the following formula
+        Proj Count = (1 + W + 2S)(1 + B)
+        W = whirlwind stages
+        S = Seals
+        B = Barrage Count
+  -  Hits per Full Cast (last 5): The number of hits registered, per full cast (including all repeats). Tracked up to the last 5 full casts
+  -  Projectiles per Full Cast (last 5): The number of projectiles per full cast, this value should match the Expected Total Projectiles
+  -  Avg Hits (Last 10 Casts): This value tracks the average number of hits over the past 10 casts
 
 Mechanics modeled
 -----------------
@@ -81,7 +92,7 @@ Mechanics modeled
   - This has been modified to the following behaviour due to Twister and Salvos Interactions. Projectiles fired are grouped into the following "hit groups", all projectiles from a hit group can only hit the same target once every 0.66 seconds, as written on the gems. The hit groups are seperated as follows:
    1. Twister's base 4 projectiles
    2. Salvo's 2 Additional Projectiles, are treated as seperate hit groups per seal.
-  - You can test this by setting "How many seals do you wait for" to 1, then overlapping both the caster and the boss. If you watch the "Hit (total)" value in Charts, it will go up by increments of 2, as the base 4 projectiles are hitting, then the 2 from Salvo are treated as a group and hitting. Therefore there are only 2 counted hits. This Behaviour is also how Barrage is implemented, where each repeat from Barrage is treated as a seperate "hit group".
+  - You can test this by setting "How many seals do you wait for" to 1, then overlapping both the caster and the boss. If you watch the "Hit (total)" value in Charts, it will go up by increments of 2, as the base 4 projectiles are hitting, then the 2 from Salvo are treated as a group and hitting. Therefore there are only 2 counted hits. This Behaviour is also how Barrage is implemented, where Barrage is treated as a "True" repeat, and all the hit groups are created based on the previous cast. For example the 4 projectiles from twister + Stage 3 whirlwind, are considered a seperate hit group, for each repeat from Barrage.
 - Projectiles bounce off walls/arena boundaries and ignore the caster
 - Duration ends a projectile.
 - Continuous collision detection (CCD) against the boss prevents tunneling between frames
