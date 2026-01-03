@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arena Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e1e2e 0%, #2d2d3d 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .canvas-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 500px;
+        }
+
+        #arenaCanvas {
+            border: 2px solid #556;
+            background: #1a1a1a;
+            cursor: crosshair;
+            flex: 1;
+            min-height: 500px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .controls-section {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .controls-section button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background: #4a9eff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #3a8eef;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+        }
+
+        .btn-primary:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #d73527;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+
+        .btn-secondary:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-success {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #27ae60;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3);
+        }
+
+        .sidebar {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel {
+            background: #2d2d3d;
+            border: 1px solid #445;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #4a9eff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .info-text {
+            font-size: 13px;
+            color: #aaa;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #445;
+            font-size: 12px;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #999;
+        }
+
+        .info-value {
+            color: #4a9eff;
+            font-weight: 600;
+        }
+
+        .point-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #445;
+            border-radius: 4px;
+            background: #1a1a1a;
+            padding: 8px;
+            margin: 10px 0;
+        }
+
+        .point-item {
+            padding: 6px;
+            background: #334;
+            margin-bottom: 4px;
+            border-radius: 3px;
+            font-size: 12px;
+            color: #ccc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .point-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .point-coords {
+            color: #4a9eff;
+            font-weight: 600;
+        }
+
+        .point-distance {
+            color: #2ecc71;
+            font-size: 11px;
+        }
+
+        .export-area {
+            margin-top: 10px;
+        }
+
+        .json-output {
+            background: #1a1a1a;
+            border: 1px solid #445;
+            border-radius: 4px;
+            padding: 8px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #2ecc71;
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+
+        .btn-copy {
+            background: #9b59b6;
+            color: white;
+            width: 100%;
+            margin-top: 8px;
+            font-size: 12px;
+        }
+
+        .btn-copy:hover {
+            background: #8e44ad;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(155, 89, 182, 0.3);
+        }
+
+        .instruction {
+            background: #1a3a1a;
+            border-left: 3px solid #2ecc71;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #bbb;
+            margin-bottom: 10px;
+        }
+
+        .instruction.active {
+            background: #1a2a4a;
+            border-left-color: #4a9eff;
+        }
+
+        .instruction.locked {
+            background: #3a2a1a;
+            border-left-color: #ff9a4a;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 28px;
+            color: #4a9eff;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #4a9eff;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+            }
+
+            .canvas-section {
+                min-width: auto;
+            }
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
+        .status-ready {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .status-drawing {
+            background: #4a9eff;
+            color: white;
+        }
+
+        .status-locked {
+            background: #ff9a4a;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="back-link">← Back to Simulator</a>
+    <h1>Arena Builder</h1>
+
+    <div class="container">
+        <div class="canvas-section">
+            <canvas id="arenaCanvas"></canvas>
+            <div class="controls-section">
+                <button id="resetBtn" class="btn-secondary">Reset</button>
+                <button id="undoBtn" class="btn-secondary" disabled>↶ Undo</button>
+                <button id="lockBtn" class="btn-primary" disabled>Lock Points (Middle-Click)</button>
+                <button id="saveBtn" class="btn-success" disabled>Save as JSON</button>
+            </div>
+            <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" id="mirrorToggle" style="width: 18px; height: 18px; cursor: pointer;">
+                <label for="mirrorToggle" style="cursor: pointer; font-size: 14px; font-weight: 500;">Mirror across Y axis</label>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="panel">
+                <h3>Instructions</h3>
+                <div id="instruction" class="instruction active">Click canvas to start drawing the arena boundary</div>
+            </div>
+
+            <div class="panel">
+                <h3>Arena Info</h3>
+                <div class="info-item">
+                    <span class="info-label">Points:</span>
+                    <span class="info-value" id="pointCount">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Perimeter:</span>
+                    <span class="info-value" id="perimeterValue">0.00u</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <div style="flex: 1; text-align: right;">
+                        <span id="status" class="status-badge status-ready">Ready</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Points</h3>
+                <div class="point-list" id="pointList">
+                    <div style="color: #666; font-size: 12px; text-align: center; padding: 20px;">
+                        No points yet
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel export-area">
+                <h3>Export</h3>
+                <p class="info-text">Arena name:</p>
+                <input type="text" id="arenaName" placeholder="e.g., custom_arena_1" style="
+                    width: 100%;
+                    padding: 8px;
+                    border: 1px solid #445;
+                    background: #1a1a1a;
+                    color: #e0e0e0;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    margin-bottom: 8px;
+                "/>
+                <div class="json-output" id="jsonOutput"></div>
+                <button id="copyBtn" class="btn-copy" disabled>Copy JSON to Clipboard</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="arena-builder.js"></script>
+</body>
+</html>
