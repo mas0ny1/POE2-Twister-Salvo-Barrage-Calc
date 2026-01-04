@@ -796,6 +796,7 @@ class Simulation {
       this.castCooldown = 0; // computed from cast speed
       this.currentSeals = 0; // Salvo seal tracking
       this.lastSealAccumTime = 0; // for seal gain timing
+      this.barrageCooldownTimer = 0; // for non-Salvo barrage cooldown
       this.barrageCastSchedule = []; // scheduled barrage repeats: {time, castNumber}
       // Load from URL params first
       const __params = parseURLParams();
@@ -1052,8 +1053,13 @@ class Simulation {
       startBtn.addEventListener('click', () => { 
         this.running = true;
         this.castAccumulator = 0; // Reset cast accumulator to prevent immediate cast
-        // Set to max seals and emit immediately
-        this.currentSeals = this.config.maxSeals;
+        // Set to max seals and emit immediately (for Salvo mode)
+        // Or set cooldown after first cast (for non-Salvo mode)
+        if (this.config.salvoSupport !== false) {
+          this.currentSeals = this.config.maxSeals;
+        } else {
+          this.barrageCooldownTimer = 2.0; // Set cooldown after first cast
+        }
         this.emitCast(performance.now());
       });
     }
@@ -1104,6 +1110,7 @@ class Simulation {
     this.castTargetLocks.clear();
     this.currentSeals = 0;
     this.lastSealAccumTime = 0;
+    this.barrageCooldownTimer = 0;
     this.barrageCastSchedule = [];
     this.currentInstanceId = null;
     this.currentCastHits = 0;
@@ -1199,7 +1206,6 @@ class Simulation {
       let groupId = projectileGroupIds ? projectileGroupIds[angleIdx] : nextProjectileGroupId++;
       angleIdx++;
       if (capturedAngles) capturedAngles.push(angle);
-      if (capturedGroupIds) capturedGroupIds.push(groupId);
       if (capturedGroupIds) capturedGroupIds.push(groupId);
       // Apply barrage repeat damage reduction if needed, combined with whirlwind boost
       const barrageMultiplier = barrageRepeatIndex > 0 ? 0.55 : 1.0; // 45% less damage for repeats
@@ -1419,26 +1425,42 @@ class Simulation {
   step(dt) {
     const now = performance.now();
 
-    // Seal accumulation (Salvo mechanic)
+    // Seal accumulation (Salvo mechanic) or Barrage cooldown (non-Salvo)
     if (this.running) {
-      this.lastSealAccumTime += dt;
-      // Calculate effective seal gain frequency with increased modifier
-      const baseSealFreq = this.config.baseSealGainFrequency;
-      const increasePercent = (this.config.increasedSealGainFrequency || 0) / 100;
-      const effectiveSealFreq = baseSealFreq * (1 + increasePercent);
-      const sealAccumInterval = 1.0 / effectiveSealFreq; // time between seals
-      while (this.lastSealAccumTime >= sealAccumInterval && this.currentSeals < this.config.maxSeals) {
-        this.lastSealAccumTime -= sealAccumInterval;
-        this.currentSeals += 1;
-      }
+      const salvoEnabled = this.config.salvoSupport !== false;
       
-      // Cast when we have enough seals (based on salvoSealCount config)
-      // If salvoSealCount is 0, treat it as 1 for timing purposes
-      this.castAccumulator += dt;
-      const sealThreshold = this.config.salvoSealCount === 0 ? 1 : this.config.salvoSealCount;
-      while (this.castAccumulator >= 0.01 && this.currentSeals >= sealThreshold) {
-        this.castAccumulator -= 0.01;
-        this.emitCast(now);
+      if (salvoEnabled) {
+        // Salvo mode: accumulate seals and cast when threshold is reached
+        this.lastSealAccumTime += dt;
+        // Calculate effective seal gain frequency with increased modifier
+        const baseSealFreq = this.config.baseSealGainFrequency;
+        const increasePercent = (this.config.increasedSealGainFrequency || 0) / 100;
+        const effectiveSealFreq = baseSealFreq * (1 + increasePercent);
+        const sealAccumInterval = 1.0 / effectiveSealFreq; // time between seals
+        while (this.lastSealAccumTime >= sealAccumInterval && this.currentSeals < this.config.maxSeals) {
+          this.lastSealAccumTime -= sealAccumInterval;
+          this.currentSeals += 1;
+        }
+        
+        // Cast when we have enough seals (based on salvoSealCount config)
+        // If salvoSealCount is 0, treat it as 1 for timing purposes
+        this.castAccumulator += dt;
+        const sealThreshold = this.config.salvoSealCount === 0 ? 1 : this.config.salvoSealCount;
+        while (this.castAccumulator >= 0.01 && this.currentSeals >= sealThreshold) {
+          this.castAccumulator -= 0.01;
+          this.emitCast(now);
+        }
+      } else {
+        // Non-Salvo mode: use barrage cooldown timer
+        this.barrageCooldownTimer -= dt;
+        this.castAccumulator += dt;
+        
+        // Cast when cooldown expires
+        if (this.barrageCooldownTimer <= 0 && this.castAccumulator >= 0.01) {
+          this.castAccumulator -= 0.01;
+          this.emitCast(now);
+          this.barrageCooldownTimer = 2.0; // 2 second cooldown
+        }
       }
       
       // Process scheduled barrage repeats
@@ -1611,10 +1633,16 @@ class Simulation {
   }
 
   updateStats() {
-    // Update seal display
+    // Update seal/cooldown display based on Salvo Support setting
     const sealDisplay = document.getElementById('currentSealsDisplay');
     if (sealDisplay) {
-      sealDisplay.textContent = `${this.currentSeals} / ${this.config.maxSeals}`;
+      const salvoEnabled = this.config.salvoSupport !== false;
+      if (salvoEnabled) {
+        sealDisplay.textContent = `Current Seals ${this.currentSeals} / ${this.config.maxSeals}`;
+      } else {
+        const cooldownRemaining = Math.max(0, this.barrageCooldownTimer);
+        sealDisplay.textContent = `Barrage Cooldown: ${cooldownRemaining.toFixed(2)}s`;
+      }
     }
     
     const hitsPerSec = this.hitTimestamps.length / 5;
@@ -1625,17 +1653,16 @@ class Simulation {
     document.getElementById('totalDmg').textContent = formatShortNumber(this.totalDamage, 1);
     document.getElementById('projAlive').textContent = formatShortNumber(this.projectiles.length, 0);
     
-    // Calculate and display expected total projectiles using formula: (1 + W + 2S)(1 + B)
-    // W = whirlwind stages, S = seals waited for (salvoSealCount), B = barrage count
-    const expectedProjCount = this.calculateExpectedProjectileCount(this.config, this.config.salvoSealCount);
-    const expectedTotalDiv = document.getElementById('expectedTotalProj');
-    expectedTotalDiv.textContent = expectedProjCount;
-    
     // Calculate and display hit groups per full cast
     // Hit Groups = (barrageCount + 1) × (salvoSealCount + 1)
     // Hit groups per cast: only barrage repeats create separate hit groups, not seals
     const hitGroupsPerCast = this.config.barrageCount + 1;
     document.getElementById('hitGroupsPerCast').textContent = hitGroupsPerCast;
+
+    // Calculate expected projectile count for verification
+    const salvoEnabled = this.config.salvoSupport !== false;
+    const expectedSealCount = salvoEnabled ? this.config.salvoSealCount : 0;
+    const expectedProjCount = (1 + (this.config.whirlwindStages || 0) + 2 * expectedSealCount) * (this.config.barrageCount + 1);
     
     // Display last 5 completed casts (or fewer if less than 5 exist)
     const last5Casts = this.castHitHistory.slice(-5);
