@@ -18,7 +18,7 @@ Current assumptions for Twister behavior: https://poe2db.tw/Twister
 - Twisters are 0.5 units (meters) in radius (from POE2DB)
 - Twisters travel in straight lines with no jitter pathing changes. There may be some sort of "homing" for these projectiles, however they are currently being treated as straight line projectiles.
 
-**Hit Rate Implementation Explaination:**
+**Hit Rate Implementation Explanation:**
 ------------------------------------------
 Salvo Seals are not treated as additional hit groups; they are treated as an additional projectile similar to +X proj from Multishot etc. All projectiles fired from clicking twister once, including Seals, all share the same 0.66s cooldown between hits
 
