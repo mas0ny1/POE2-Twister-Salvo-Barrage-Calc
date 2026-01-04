@@ -22,7 +22,7 @@ Current assumptions for Twister behavior: https://poe2db.tw/Twister
 ------------------------------------------
 Salvo Seals are not treated as additional hit groups; they are treated as an additional projectile similar to +X proj from Multishot etc. All projectiles fired from clicking twister once, including Seals, all share the same 0.66s cooldown between hits
 
-You can see some discussion that here: https://www.reddit.com/r/pathofexile2builds/comments/1q381z7/comment/nxiuuty/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
+You can see some discussion on that here: https://www.reddit.com/r/pathofexile2builds/comments/1q381z7/comment/nxiuuty/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
 
 And some video testing here:
 
