@@ -57,6 +57,7 @@ function buildURLState(sim) {
     bc: sim.config.barrageCount,
     bti: sim.config.barrageTimeInterval,
     tbr: sim.config.timeBetweenBarrageRepeats,
+    ss: sim.config.salvoSupport ? 1 : 0,
     cxu: casterW.x, cyu: casterW.y,
     bxu: bossW.x, byu: bossW.y,
   };
@@ -148,6 +149,10 @@ function applyParamsToDOM(params) {
     const elem = el(id);
     if (elem && v !== undefined) elem.value = v; 
   };
+  const setCheckbox = (id, v) => {
+    const elem = el(id);
+    if (elem && v !== undefined) elem.checked = v === 1 || v === true || v === 'true';
+  };
   setSelIf('arenaType', decodeArena(params.a));
   setIf('avgHit', params.ah);
   setIf('projSpeedMod', params.ps);
@@ -163,6 +168,7 @@ function applyParamsToDOM(params) {
   setIf('twisterRadius', params.twisterRadius);
   setIf('increasedSealGainFrequency', params.increasedSealGainFrequency);
   setIf('bossRadius', params.er);
+  setCheckbox('salvoSupport', params.ss);
   const timeScaleElem = el('timeScale');
   if (timeScaleElem && params.ts !== undefined && !Number.isNaN(params.ts)) timeScaleElem.value = String(params.ts);
   return {
@@ -194,6 +200,7 @@ function writeURLParams(state) {
   set('tbr', state.tbr);
   set('er', state.er);
   set('ts', state.ts);
+  set('ss', state.ss);
   const fmtN = (n) => (v) => {
     const s = Number(v).toFixed(n);
     return s.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
@@ -667,9 +674,7 @@ class Projectile {
     this.chainRemaining = config.chainCount;
     this.splitCount = config.splitCount; // number of new projectiles when split triggers
     this.hasSplit = false;
-    // Salvo grouping: base projectiles (0), then seal groups (1, 2, 3, ...)
-    this.salvoGroup = config.salvoGroup || 0;
-    // Damage multiplier for barrage repeats (0.6 for 40% less damage)
+    // Damage multiplier for barrage repeats (0.55 for 45% less damage)
     this.damageMultiplier = config.damageMultiplier !== undefined ? config.damageMultiplier : 1.0;
   }
   age(now) { return (now - this.spawnTime) / 1000; }
@@ -877,7 +882,6 @@ class Simulation {
         chainCount: proj.chainRemaining,
         splitCount: 0,
         twisterRadius: this.config.twisterRadius,
-        salvoGroup: proj.salvoGroup,
         damageMultiplier: proj.damageMultiplier,
       }));
     }
@@ -913,7 +917,6 @@ class Simulation {
         chainCount: proj.chainRemaining,
         splitCount: 0,
         twisterRadius: this.config.twisterRadius,
-        salvoGroup: proj.salvoGroup,
         damageMultiplier: proj.damageMultiplier,
       }));
     }
@@ -946,6 +949,10 @@ class Simulation {
       const elem = el(id);
       return elem ? elem.value : 'circle';
     };
+    const getCheckbox = (id) => {
+      const elem = el(id);
+      return elem ? elem.checked : false;
+    };
     return {
       arenaType: getSel('arenaType'),
       avgHit: getNum('avgHit'),
@@ -968,6 +975,7 @@ class Simulation {
       baseSealGainFrequency: getNum('baseSealGainFrequency'),
       baseProjSpeed: getNum('baseProjSpeed'),
       increasedSealGainFrequency: getNum('increasedSealGainFrequency'),
+      salvoSupport: getCheckbox('salvoSupport'),
     };
   }
 
@@ -996,6 +1004,16 @@ class Simulation {
           updateURL(this);
         });
       }
+    }
+
+    // Handle salvoSupport checkbox separately (it's a change event, not input)
+    const salvoSupportElem = document.getElementById('salvoSupport');
+    if (salvoSupportElem) {
+      salvoSupportElem.addEventListener('change', () => {
+        this.running = false;
+        this.config = this.readConfigFromDOM();
+        updateURL(this);
+      });
     }
 
     // Link barrageCount, timeBetweenBarrageRepeats, and barrageTimeInterval
@@ -1130,15 +1148,20 @@ class Simulation {
     const cfg = this.config;
     // With Salvo: fire base projectiles + stages + 2 per seal consumed
     // Base: projectileCount + whirlwindStages
-    // Seals: 2 projectiles per seal
-    // Total per emission: (1 + W + 2S)
+    // Seals: 2 projectiles per seal (only when Salvo Support is ON)
+    // Whirlwind stages: 1 projectile per stage (always, regardless of Salvo)
+    // Total per emission: (1 + W) always, plus (2S) when Salvo ON
     // This gets emitted (1 + B) times total (once for main, once for each barrage)
-    // Overall per cast instance: (1 + W + 2S) * (1 + B)
+    // Overall per cast instance: (1 + W + 2S) * (1 + B) when Salvo ON, or (1 + W) * (1 + B) when Salvo OFF
     const projectilesPerSeal = 2;
-    // Base projectiles: 1 (base) + W (whirlwind stages)
-    // cfg.projectileCount represents the base count which should contribute to the 1
+    
+    // Handle Salvo Support setting
+    const salvoEnabled = cfg.salvoSupport !== false; // default true if not specified
+    
+    // Base projectiles: always 1 + whirlwind stages
     const baseCount = 1 + (cfg.whirlwindStages || 0);
-    const actualSealCount = sealCount !== null ? sealCount : this.currentSeals;
+    // Seal projectiles: only added when Salvo Support is ON
+    const actualSealCount = salvoEnabled ? (sealCount !== null ? sealCount : this.currentSeals) : 0;
     
     // Calculate effective projectile speed with increased modifier
     const increasePercent = (this.config.increasedProjSpeed || 0) / 100;
@@ -1148,6 +1171,14 @@ class Simulation {
     // 0 stages = 1.0x, 1 stage = 1.8x, 2 stages = 2.6x, 3 stages = 3.4x, etc.
     const whirlwindDamageMultiplier = 1.0 + (cfg.whirlwindStages || 0) * 0.8;
     
+    // Calculate angle toward boss if Salvo Support is disabled
+    let angleTowardBoss = null;
+    if (!salvoEnabled) {
+      const dx = this.boss.x - this.caster.x;
+      const dy = this.boss.y - this.caster.y;
+      angleTowardBoss = Math.atan2(dy, dx);
+    }
+    
     // If this is the main cast (barrageRepeatIndex === 0) and no groupIds provided, generate and track them
     const capturedAngles = (barrageRepeatIndex === 0 && !angles) ? [] : null;
     const capturedGroupIds = (barrageRepeatIndex === 0 && !projectileGroupIds) ? [] : null;
@@ -1155,10 +1186,20 @@ class Simulation {
     
     // Fire base projectiles (group 0)
     for (let i = 0; i < baseCount; i++) {
-      const angle = angles ? angles[angleIdx] : randRange(0, TWO_PI);
+      let angle;
+      if (angles) {
+        angle = angles[angleIdx];
+      } else if (salvoEnabled) {
+        angle = randRange(0, TWO_PI);
+      } else {
+        // When Salvo is OFF, spread projectiles in a 30-degree cone around boss direction
+        const coneHalfWidth = 15 * DEG_TO_RAD; // ±15 degrees
+        angle = angleTowardBoss + (Math.random() - 0.5) * 2 * coneHalfWidth;
+      }
       let groupId = projectileGroupIds ? projectileGroupIds[angleIdx] : nextProjectileGroupId++;
       angleIdx++;
       if (capturedAngles) capturedAngles.push(angle);
+      if (capturedGroupIds) capturedGroupIds.push(groupId);
       if (capturedGroupIds) capturedGroupIds.push(groupId);
       // Apply barrage repeat damage reduction if needed, combined with whirlwind boost
       const barrageMultiplier = barrageRepeatIndex > 0 ? 0.55 : 1.0; // 45% less damage for repeats
@@ -1180,16 +1221,18 @@ class Simulation {
         chainCount: this.config.chainCount,
         splitCount: this.config.splitCount,
         twisterRadius: this.config.twisterRadius,
-        salvoGroup: 0, // base projectiles
         damageMultiplier,
         simulationRef: this,
       }));
     }
     
-    // Fire seal projectiles (groups 1, 2, 3, ...)
+    // Fire seal projectiles with shared hit group (same barrageRepeatIndex)
+    // Salvo seals add 2 projectiles per seal, up to 3 seals = 6 additional projectiles
+    // These all share the same hit group as the base projectiles for this barrage repeat
     for (let sealIdx = 0; sealIdx < actualSealCount; sealIdx++) {
       for (let i = 0; i < projectilesPerSeal; i++) {
-        const angle = angles ? angles[angleIdx] : randRange(0, TWO_PI);
+        // Generate random firing direction for seal projectiles
+        const angle = randRange(0, TWO_PI);
         let groupId = projectileGroupIds ? projectileGroupIds[angleIdx] : nextProjectileGroupId++;
         angleIdx++;
         if (capturedAngles) capturedAngles.push(angle);
@@ -1214,7 +1257,6 @@ class Simulation {
           chainCount: this.config.chainCount,
           splitCount: this.config.splitCount,
           twisterRadius: this.config.twisterRadius,
-          salvoGroup: sealIdx + 1, // seal groups start at 1
           damageMultiplier,
           simulationRef: this,
         }));
@@ -1276,10 +1318,10 @@ class Simulation {
   }
 
   tryApplyHit(proj, now) {
-    // Per-group cooldown: each barrage repeat + each seal group combination is independent
-    // Key: instanceId | barrageRepeatIndex | salvoGroup | targetId
+    // Per-group cooldown: each barrage repeat is independent
+    // Key: instanceId | barrageRepeatIndex | targetId
     const targetId = 'boss';
-    const key = proj.instanceId + '|' + proj.barrageRepeatIndex + '|' + proj.salvoGroup + '|' + targetId;
+    const key = proj.instanceId + '|' + proj.barrageRepeatIndex + '|' + targetId;
     const nextOk = this.castTargetLocks.get(key) || 0;
     if (now >= nextOk) {
       this.hitsTotal += 1;
@@ -1304,26 +1346,26 @@ class Simulation {
     return false;
   }
 
-  getGroupColor(salvoGroup, onCooldown = false) {
-    // Return highly distinct colors for each salvo group
+  getGroupColor(barrageRepeatIndex, onCooldown = false) {
+    // Return distinct colors for main cast and barrage repeats
     // Bright colors when on cooldown (hit just occurred), dimmed/dark when idle
     const brightColors = [
-      '#00FFFF',  // Group 0 (base) - bright cyan
-      '#00FF00',  // Group 1 (seal 1) - bright lime green
-      '#FFFF00',  // Group 2 (seal 2) - bright yellow
-      '#FF1493',  // Group 3 (seal 3) - deep pink/magenta
-      '#FF6600',  // Group 4+ - bright orange
+      '#00FFFF',  // Barrage 0 (main) - bright cyan
+      '#00FF00',  // Barrage 1 - bright lime green
+      '#FFFF00',  // Barrage 2 - bright yellow
+      '#FF1493',  // Barrage 3 - deep pink/magenta
+      '#FF6600',  // Barrage 4+ - bright orange
     ];
     const dimmColors = [
-      '#004466',  // Group 0 (base) - dark teal
-      '#004400',  // Group 1 (seal 1) - dark green
-      '#666600',  // Group 2 (seal 2) - dark olive/yellow
-      '#660033',  // Group 3 (seal 3) - dark pink
-      '#663300',  // Group 4+ - dark orange/brown
+      '#004466',  // Barrage 0 (main) - dark teal
+      '#004400',  // Barrage 1 - dark green
+      '#666600',  // Barrage 2 - dark olive/yellow
+      '#660033',  // Barrage 3 - dark pink
+      '#663300',  // Barrage 4+ - dark orange/brown
     ];
     const colors = onCooldown ? brightColors : dimmColors;
-    if (salvoGroup < colors.length) {
-      return colors[salvoGroup];
+    if (barrageRepeatIndex < colors.length) {
+      return colors[barrageRepeatIndex];
     }
     return colors[colors.length - 1];
   }
@@ -1335,7 +1377,7 @@ class Simulation {
     if (d <= proj.radius + this.boss.r) {
       const hitRegistered = this.tryApplyHit(proj, now);
       if (hitRegistered) {
-        console.log(`[HIT] Proj ${proj.id.slice(0,8)} BarrageIdx:${proj.barrageRepeatIndex} SalvoGroup:${proj.salvoGroup} - Distance: ${d.toFixed(2)}, Threshold: ${(proj.radius + this.boss.r).toFixed(2)}`);
+        console.log(`[HIT] Proj ${proj.id.slice(0,8)} BarrageIdx:${proj.barrageRepeatIndex} - Distance: ${d.toFixed(2)}, Threshold: ${(proj.radius + this.boss.r).toFixed(2)}`);
         // Only one behavior can occur per collision; priority: Split -> Pierce -> Fork -> Chain
 
         // 1) Split (even 360° emission).
@@ -1363,7 +1405,7 @@ class Simulation {
         return 'remove';
       } else {
         // No hit registered due to per-cast cooldown; pass through without behaviors
-        console.log(`[BLOCKED] Proj ${proj.id.slice(0,8)} BarrageIdx:${proj.barrageRepeatIndex} SalvoGroup:${proj.salvoGroup} - On cooldown`);
+        console.log(`[BLOCKED] Proj ${proj.id.slice(0,8)} BarrageIdx:${proj.barrageRepeatIndex} - On cooldown`);
       }
     }
     return 'keep';
@@ -1525,10 +1567,10 @@ class Simulation {
 
     // Projectiles: bright group color when hit (on cooldown), dimmed when idle
     for (const p of this.projectiles) {
-      const key = p.instanceId + '|' + p.barrageRepeatIndex + '|' + p.salvoGroup + '|boss';
+      const key = p.instanceId + '|' + p.barrageRepeatIndex + '|boss';
       const nextOk = this.castTargetLocks.get(key) || 0;
       const onCooldown = performance.now() < nextOk;
-      const color = this.getGroupColor(p.salvoGroup, onCooldown);
+      const color = this.getGroupColor(p.barrageRepeatIndex, onCooldown);
       p.draw(ctx, color);
     }
 
@@ -1591,7 +1633,8 @@ class Simulation {
     
     // Calculate and display hit groups per full cast
     // Hit Groups = (barrageCount + 1) × (salvoSealCount + 1)
-    const hitGroupsPerCast = (this.config.barrageCount + 1) * (this.config.salvoSealCount + 1);
+    // Hit groups per cast: only barrage repeats create separate hit groups, not seals
+    const hitGroupsPerCast = this.config.barrageCount + 1;
     document.getElementById('hitGroupsPerCast').textContent = hitGroupsPerCast;
     
     // Display last 5 completed casts (or fewer if less than 5 exist)

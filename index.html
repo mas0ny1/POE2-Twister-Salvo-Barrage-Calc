@@ -113,6 +113,10 @@
         <section class="card">
           <h3>Character Behaviour</h3>
           <div class="field-group">
+            <label for="salvoSupport">Enable Salvo Support</label>
+            <input id="salvoSupport" type="checkbox" checked />
+          </div>
+          <div class="field-group">
             <label for="salvoSealCount">How many seals do you wait for</label>
             <input id="salvoSealCount" type="number" value="3" min="0" step="1" />
           </div>
@@ -152,7 +156,6 @@
             <div class="stat"><span>DPS:</span><strong id="dps">0</strong><canvas id="sparkDps" class="twister" width="160" height="28"></canvas></div>
             <div class="stat"><span>Total Damage:</span><strong id="totalDmg">0</strong><canvas id="sparkDmg" class="twister" width="160" height="28"></canvas></div>
             <div class="stat"><span>Projectiles:</span><strong id="projAlive">0</strong><canvas id="sparkAlive" class="twister" width="160" height="28"></canvas></div>
-            <div class="stat"><span>Expected Total Projectiles:</span><strong id="expectedTotalProj">0</strong></div>
             <div class="stat"><span>Hit groups Per full cast:</span><strong id="hitGroupsPerCast">0</strong></div>
             <div class="stat"><span>Hits per Full Cast (last 5):</span><div id="hitsPerCast" style="font-size: 0.9em; color: #7cc5ff; font-weight: bold;">-</div></div>
             <div class="stat"><span>Percentage of Total Hit Groups Collided (last 5):</span><div id="percentHitGroups" style="font-size: 0.9em; color: #7cc5ff; font-weight: bold;">-</div></div>
