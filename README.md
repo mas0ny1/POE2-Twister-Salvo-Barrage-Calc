@@ -1,4 +1,5 @@
 Twister - Salvo Support - Barrage Simulator (Path of Exile 2)
+See Discussions Here: https://www.reddit.com/r/pathofexile2builds/comments/1q381z7/twister_dps_simulator_tool_and_whirling_slash/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
 ==========================================================
 
 Web app to visualize and approximate Path of Exile 2's Twister projectile behavior and DPS. Runs entirely in the browser using a single HTML page, CSS, and vanilla JavaScript.
@@ -19,30 +20,25 @@ Current assumptions for Twister behavior: https://poe2db.tw/Twister
 
 **Hit Rate Implementation Explaination:**
 ------------------------------------------
-The Key interaction I will briefly discuss here is regarding the Hit Rate:
-The Twister gem has the following line: 
-Twisters fired at the same time can Hit the same target no more than once every 0.66 seconds
+Salvo Seals are not treated as additional hit groups; they are treated as an additional projectile similar to +X proj from Multishot etc. All projectiles fired from clicking twister once, including Seals, all share the same 0.66s cooldown between hits
 
-Currently my understanding of this is that Salvo Support, and Barraged repeated attacks bypass this line on Twister, and are treated as their own individual "Hit Groups"
+You can see some discussion that here: https://www.reddit.com/r/pathofexile2builds/comments/1q381z7/comment/nxiuuty/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
 
-For Example, if I shoot a twister with whirling slash stage 3, that is 4 projectiles. These 4 projectiles can only hit a boss once per 0.66 seconds.
-If I have Salvo support with 1 Seal, that's 2 more projectiles.
-The end result is that my twister can "hit twice" initially, meaning I can get a hit from my 4 projectiles, and another hit from the 2 projectiles from Salvo Support.
-The same logic applies all the way to up 3 seals, where each seal has its own separate hit group, and can all hit with a 0.66s cooldown for all projectiles for each "hit group"
+And some video testing here:
 
-To follow up on this, I would like to talk about Barrage.
-I believe barrage's current implementation is that all repeated attacks are treated as if you are hard casting it very rapidly with very low attack time. This means that non of the hit groups are shared between an attack and its repeat.
-Using the previous example with 4 twister from whirling slash stage 3, but no seals. This means we can get 2 hits from this, as there are 1 "hit group" of 4 projectiles and 1 
-"hit group" of 2 projectiles (from salvo), resulting in 2 hit groups, so 2 hits.
+[[POE2 0.4 Testing] Twister - Salvo - Barrage - Number of hits (Hit Groups)](https://youtu.be/M0aggtF_sls)
 
-And for seals I believe the same behaviour is followed, so the 2 projectiles created by the 1 seal, when repeated is its own hit group. This results in 4 maximum hits for a 1 seal, 1 barrage count (1 repeat) twister
-If anyone has information that shows that my understanding of this mechanic is incorrect, please let me know. I'd like to have more information to get a more accurate determination of my understanding.
+The Tool has had its implementation corrected to match this. Seals generated from Salvo are part of the original twister's hit group, and are not separated. This is similar to how Spark behaves.
 
-**Things To look into:**
-------------------------------------------
-1. I believe twister has some sort of "homing" where if its close enough to a boss, it will hit. The radius as written on POE2DB is 0.5 meters, however I do not believe this is the hitbox for twister and I feel like its either bigger, or has a very generous hitbox check.
-2. Following this I'm not sure if Twister actually goes in a perfect straight line
-3. Barraged attacks seem to have a very slight deviation to the angle that the projectiles that come out, this was not implemented for this tool
+Barrage:
+
+Barrage does produce new hit groups, meaning it is a direct hit multipler to your damage.
+
+Barrage 2 + Twister will result in 3 hits, Barrage 16 + Twister will result in 17 Hits.
+
+This can be seen in the following test: https://youtu.be/M0aggtF_sls?si=FXkPyxR-PsWQuuYm&t=113
+
+This is my understanding of how Twister Hits work, if this is incorrect and I've overlooked something, please let me know and I will correct the implementation
 
 Quick start
 -----------
